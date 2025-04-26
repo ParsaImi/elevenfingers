@@ -1,0 +1,182 @@
+<script lang="ts">
+  import { onMount, tick, createEventDispatcher } from 'svelte';
+  import { goto } from '$app/navigation';
+
+  export let gameData: {
+    text: string,
+    StartTime: string,
+    IsActive: string,
+    language?: string // Add language field
+  };
+  export let onWordComplete: (word: string) => void;
+
+  const dispatch = createEventDispatcher();
+
+  let gameText = '';
+  let textArray: string[] = [];
+  let currentPosition = 0;
+  let typedText = '';
+  let isActive = true;
+  let startTime: Date;
+  let currentWordStart = 0;
+  let wordsTyped = 0;
+  let accuracy = 100;
+  let correctChars = 0;
+  let totalChars = 0;
+  let errorState = false;
+  let playerProgress: Record<string, number> = {};
+  let currentUserId = '';
+  let playerRanks: Record<string, number> = {};
+  let gameEnded = false;
+  let gameResults: any = null;
+  let finalLeaderboard: Record<number, string> = {};
+  let language = 'en'; // Default to English
+
+  $: if (gameData) {
+    gameText = gameData.text;
+    textArray = gameText.split(''); // Split by characters for precise rendering
+    isActive = gameData.IsActive === "TRUE";
+    startTime = new Date(gameData.StartTime);
+    language = gameData.language || 'en'; // Set language from gameData
+    currentPosition = 0;
+    typedText = '';
+    currentWordStart = 0;
+    wordsTyped = 0;
+    correctChars = 0;
+    totalChars = 0;
+    errorState = false;
+    gameEnded = false;
+    playerRanks = {};
+    finalLeaderboard = {};
+  }
+
+  $: if (totalChars > 0) {
+    accuracy = Math.round((correctChars / totalChars) * 100);
+  }
+
+  async function handleKeydown(event: KeyboardEvent) {
+    if (!isActive || gameEnded) return;
+
+    if (event.key.length === 1 || event.key === 'Backspace') {
+      event.preventDefault();
+
+      if (event.key === 'Backspace') {
+        if (currentPosition > 0) {
+          currentPosition--;
+          typedText = typedText.substring(0, currentPosition);
+          if (errorState && currentPosition >= 0) {
+            if (currentPosition === 0 || typedText.substring(0, currentPosition) === gameText.substring(0, currentPosition)) {
+              errorState = false;
+            }
+          }
+        }
+      } else {
+        if (errorState) {
+          return;
+        }
+
+        const isCorrect = event.key === textArray[currentPosition];
+
+        if (isCorrect) {
+          typedText = typedText + event.key;
+          currentPosition++;
+          totalChars++;
+          correctChars++;
+
+          // Check for word completion
+          if (event.key === ' ' || currentPosition === textArray.length) {
+            const completedWord = gameText.substring(currentWordStart, currentPosition).trim();
+            if (completedWord) {
+              onWordComplete(completedWord);
+              currentWordStart = currentPosition;
+              wordsTyped++;
+            }
+          }
+        } else {
+          typedText = typedText + event.key;
+          currentPosition++;
+          errorState = true;
+          totalChars++;
+        }
+      }
+
+      await tick();
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener('keydown', handleKeydown);
+    const username = localStorage.getItem('tenfinger_username');
+    if (username) {
+      currentUserId = username;
+    } else {
+      currentUserId = `Guest_${Math.floor(Math.random() * 10000)}`;
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeydown);
+    };
+  });
+
+  export function updateProgress(userId: string, percentage: number) {
+    playerProgress[userId] = percentage;
+    playerProgress = { ...playerProgress };
+  }
+
+  export function updatePlayerRanks(ranks: Record<string, number>) {
+    playerRanks = { ...playerRanks, ...ranks };
+  }
+
+  export function endGame(results = null) {
+    gameEnded = true;
+    gameResults = results;
+    if (results && results.leaderboard) {
+      finalLeaderboard = results.leaderboard;
+    }
+    isActive = false;
+  }
+
+  function getCharClass(char: string, index: number) {
+    if (index >= typedText.length) {
+      return 'not-typed';
+    }
+    return typedText[index] === char ? 'correct' : 'incorrect';
+  }
+
+  function getRankBadgeColor(rank: number) {
+    switch (rank) {
+      case 1: return 'gold';
+      case 2: return 'silver';
+      case 3: return 'bronze';
+      default: return 'default';
+    }
+  }
+
+  $: sortedPlayers = Object.entries(playerProgress)
+    .sort(([, progressA], [, progressB]) => progressB - progressA);
+
+  $: leaderboardEntries = Object.entries(finalLeaderboard)
+    .map(([rank, username]) => ({
+      rank: parseInt(rank),
+      username: username,
+      isCurrentUser: username === currentUserId
+    }))
+    .sort((a, b) => a.rank - b.rank);
+
+  function goToMainMenu() {
+    goto('/');
+  }
+
+  function playAgain() {
+    dispatch('playAgain');
+  }
+
+  function getCurrentPlayerRank() {
+    for (const [rank, username] of Object.entries(finalLeaderboard)) {
+      if (username === currentUserId) {
+        return parseInt(rank);
+      }
+    }
+    return playerRanks[currentUserId] ||
+      (sortedPlayers.findIndex(([playerId]) => playerId === currentUserId) + 1);
+  }
+</script>

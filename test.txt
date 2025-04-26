@@ -1,4 +1,474 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
+  import { goto } from '$app/navigation';
+  import WaitingRoom from '$lib/components/WaitingRoom.svelte';
+  import TypingGame from '$lib/components/TypingGame.svelte';
+  
+  let ws: WebSocket;
+  let currentView = 'waiting'; // 'waiting', 'game'
+  let roomData = { players: {} };
+  let gameData: any = null;
+  let typingGameComponent: TypingGame;
+  let selectedRoom: string = '';
+  let isPersianRoom = false; // Flag for Persian room
+  
+  onMount(() => {
+    // Get the selected room from localStorage
+    selectedRoom = localStorage.getItem('selected_room') || 'test';
+    
+    // Check if it's the Persian room
+    isPersianRoom = selectedRoom === 'room3';
+    
+    // Connect to WebSocket server
+    ws = new WebSocket('ws://localhost:9000/ws'); // Replace with your actual WebSocket URL
+    
+    ws.onopen = () => {
+      console.log('Connected to the server');
+      // Join the selected room when the page loads
+      joinGame(selectedRoom);
+    };
+    
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      
+      switch(data.type) {
+        case 'roomStatus':
+          roomData = data;
+          currentView = 'waiting';
+          break;
+        case 'startGame':
+          gameData = data;
+          currentView = 'game';
+          break;
+        case 'userProgress':
+          // Handle progress updates from server
+          if (typingGameComponent && data.userid && typeof data.percentage === 'number') {
+            typingGameComponent.updateProgress(data.userid, data.percentage);
+          }
+          break;
+        case 'playerRank':
+          // Handle player rank updates
+          if (typingGameComponent && data.playerrank) {
+            typingGameComponent.updatePlayerRanks(data.playerrank);
+          }
+          break;
+        case 'endGame':
+          // Handle game end signal
+          if (typingGameComponent) {
+            typingGameComponent.endGame(data);
+          }
+          break;
+        default:
+          console.log('Received unknown message type:', data.type);
+      }
+    };
+    
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+    
+    ws.onclose = () => {
+      console.log('Disconnected from the server');
+    };
+  });
+  
+  onDestroy(() => {
+    if (ws) {
+      ws.close();
+    }
+  });
+  
+  function joinGame(roomName: string = selectedRoom) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'join',
+        content: { room: roomName }
+      }));
+    }
+  }
+  
+  function sendReady() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'ready'
+      }));
+    }
+  }
+  
+  function sendWordComplete(word: string) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'wordComplete',
+        content: { word }
+      }));
+    }
+  }
+  
+  function handlePlayAgain() {
+    // Return to waiting room view
+    currentView = 'waiting';
+    
+    // Rejoin the game room
+    joinGame();
+  }
+  
+  function changeRoom() {
+    // Navigate back to the rooms list
+    goto('/rooms');
+  }
+</script>
+
+<svelte:head>
+  <title>Tenfinger Typing Game - {selectedRoom} Room</title>
+  <meta name="description" content="Multiplayer typing game" />
+</svelte:head>
+
+<div class="container {isPersianRoom ? 'persian-container' : ''}">
+  {#if currentView === 'waiting'}
+    <div class="room-header">
+      <h2>Room: {selectedRoom} {isPersianRoom ? '(Persian)' : ''}</h2>
+      <button class="change-room-btn" on:click={changeRoom}>Change Room</button>
+    </div>
+    <WaitingRoom 
+      players={roomData.players} 
+      onReady={sendReady}
+      isPersian={isPersianRoom}
+    />
+  {:else if currentView === 'game'}
+    <TypingGame 
+      gameData={gameData} 
+      onWordComplete={sendWordComplete}
+      bind:this={typingGameComponent}
+      on:playAgain={handlePlayAgain}
+      isPersian={isPersianRoom}
+    />
+  {/if}
+</div>
+
+<style>
+  .container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+  
+  .persian-container {
+    /* Specific styles for Persian text direction */
+    direction: rtl;
+    text-align: right;
+    font-family: 'Tahoma', 'Arial', sans-serif;
+  }
+  
+  .room-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #eee;
+  }
+  
+  .room-header h2 {
+    margin: 0;
+    font-size: 1.75rem;
+  }
+  
+  .change-room-btn {
+    padding: 0.5rem 1rem;
+    background-color: #f5f5f5;
+    border: none;
+    border-radius: 4px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  .change-room-btn:hover {
+    background-color: #e0e0e0;
+  }
+</style>
+
+
+// src/routes/+page.svelte - Main landing page
+
+<script lang="ts">
+  import { goto } from '$app/navigation';
+  
+  function startGame() {
+    goto('/rooms');
+  }
+
+  function gototest() {
+      goto("/test")
+  }
+</script>
+
+<svelte:head>
+  <title>Tenfinger Typing Game</title>
+  <meta name="description" content="Multiplayer typing game" />
+</svelte:head>
+
+<div class="container">
+  <div class="hero">
+    <h1>Tenfinger Typing Game</h1>
+    <p class="subtitle">Compete with players from around the world in real-time typing challenges</p>
+    
+    <div class="cta-buttons">
+      <button class="start-button" on:click={startGame}>Start Game</button>
+      <a href="/login" class="login-link">Login / Register</a>
+    </div>
+  </div>
+  
+  <div class="features">
+    <div class="feature">
+      <h3>Real-Time Competition</h3>
+      <p>Race against other players to see who can type the fastest with perfect accuracy</p>
+    </div>
+    
+    <div class="feature">
+      <h3>Improve Your Skills</h3>
+      <p>Track your progress and see your typing speed and accuracy improve over time</p>
+    </div>
+    
+    <div class="feature">
+      <h3>Multiple Rooms</h3>
+      <p>Join existing game rooms or create your own custom room to challenge friends</p>
+    </div>
+  </div>
+</div>
+
+<style>
+  .container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+  
+  .hero {
+    text-align: center;
+    padding: 3rem 1rem;
+    margin-bottom: 3rem;
+  }
+  
+  h1 {
+    font-size: 3.5rem;
+    margin-bottom: 1rem;
+    color: #333;
+  }
+  
+  .subtitle {
+    font-size: 1.25rem;
+    color: #666;
+    max-width: 600px;
+    margin: 0 auto 2.5rem auto;
+  }
+  
+  .cta-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+  }
+  
+  .start-button {
+    padding: 0.875rem 2rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: white;
+    background-color: #4a56e2;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.2s;
+  }
+  
+  .start-button:hover {
+    background-color: #3643cf;
+    transform: translateY(-2px);
+  }
+  
+  .login-link {
+    padding: 0.875rem 2rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #4a56e2;
+    background-color: transparent;
+    border: 2px solid #4a56e2;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+    text-decoration: none;
+    display: inline-block;
+  }
+  
+  .login-link:hover {
+    background-color: #4a56e2;
+    color: white;
+    text-decoration: none;
+  }
+  
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 2rem;
+    margin-bottom: 3rem;
+  }
+  
+  .feature {
+    background-color: #f9f9f9;
+    padding: 2rem;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s;
+  }
+  
+  .feature:hover {
+    transform: translateY(-5px);
+  }
+  
+  .feature h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: #333;
+  }
+  
+  .feature p {
+    color: #666;
+    margin: 0;
+  }
+</style>
+
+// src/lib/components/WaitingRoom.svelte - Waiting room component
+
+<script lang="ts">
+  export let players: Record<string, boolean> = {};
+  export let onReady: () => void;
+  
+  $: readyCount = Object.values(players).filter(ready => ready).length;
+  $: totalPlayers = Object.keys(players).length;
+</script>
+
+<div class="waiting-room">
+  <h2>Waiting Room</h2>
+  
+  <div class="player-list">
+    <h3>Players ({readyCount}/{totalPlayers} ready)</h3>
+    {#if totalPlayers === 0}
+      <p>No players in room yet. Waiting for others to join...</p>
+    {:else}
+      <ul>
+        {#each Object.entries(players) as [playerName, isReady]}
+          <li class={isReady ? 'ready' : 'not-ready'}>
+            {playerName} {isReady ? '✓' : ''}
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </div>
+  
+  <div class="ready-section">
+    <p>Once you're ready to play, click the button below:</p>
+    <button on:click={onReady}>I'm Ready</button>
+    <p class="hint">Game will start when all players are ready</p>
+  </div>
+</div>
+
+<style>
+  .waiting-room {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem;
+  }
+  
+  h2 {
+    font-size: 2.5rem;
+    margin-bottom: 2rem;
+    text-align: center;
+  }
+  
+  .player-list {
+    width: 100%;
+    max-width: 500px;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+  }
+  
+  h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #eee;
+  }
+  
+  ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+  }
+  
+  li {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  li:last-child {
+    border-bottom: none;
+  }
+  
+  .ready {
+    color: #2ecc71;
+    font-weight: 600;
+  }
+  
+  .not-ready {
+    color: #7f8c8d;
+  }
+  
+  .ready-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  button {
+    padding: 12px 28px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: white;
+    background-color: #4a56e2;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    margin: 1rem 0;
+  }
+  
+  button:hover {
+    background-color: #3643cf;
+  }
+  
+  .hint {
+    font-style: italic;
+    color: #666;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+  }
+</style>
+
+
+// TypingGame.svelte
+
+<script lang="ts">
   import { onMount, tick, createEventDispatcher } from 'svelte';
   import { goto } from '$app/navigation';
   
@@ -1048,3 +1518,321 @@
   /* برای حل مشکل فونت */
   @import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/font-face.css');
 </style>
+
+// src/routes/login/+page.svelte
+<script lang="ts">
+  import { goto } from '$app/navigation';
+  
+  let username = '';
+  let password = '';
+  let error = '';
+  
+  function handleSubmit() {
+    // In a real app, you would handle authentication here
+    // For now, we'll just do a basic validation and redirect
+    if (!username) {
+      error = 'Username is required';
+      return;
+    }
+    
+    // Store username in localStorage or a store
+    localStorage.setItem('tenfinger_username', username);
+    goto('/');
+  }
+</script>
+
+<svelte:head>
+  <title>Login - Tenfinger</title>
+</svelte:head>
+
+<div class="login-container">
+  <div class="login-card">
+    <h1>Login</h1>
+    
+    <form on:submit|preventDefault={handleSubmit}>
+      {#if error}
+        <div class="error">{error}</div>
+      {/if}
+      
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input 
+          type="text" 
+          id="username" 
+          bind:value={username} 
+          placeholder="Enter your username"
+        />
+      </div>
+      
+      <div class="form-group">
+        <label for="password">Password (optional)</label>
+        <input 
+          type="password" 
+          id="password" 
+          bind:value={password} 
+          placeholder="Enter your password"
+        />
+      </div>
+      
+      <button type="submit">Login</button>
+    </form>
+    
+    <p class="note">
+      Don't have an account? You can play as a guest by just entering a username.
+    </p>
+  </div>
+</div>
+
+<style>
+  .login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 80vh;
+    padding: 2rem;
+  }
+  
+  .login-card {
+    background-color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 400px;
+  }
+  
+  h1 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    text-align: center;
+    color: #333;
+  }
+  
+  .form-group {
+    margin-bottom: 1.5rem;
+  }
+  
+  label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #555;
+  }
+  
+  input {
+    width: 100%;
+    padding: 0.75rem;
+    font-size: 1rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: #f9f9f9;
+  }
+  
+  input:focus {
+    outline: none;
+    border-color: #4a56e2;
+    box-shadow: 0 0 0 2px rgba(74, 86, 226, 0.2);
+  }
+  
+  button {
+    width: 100%;
+    padding: 0.75rem;
+    background-color: #4a56e2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  button:hover {
+    background-color: #3643cf;
+  }
+  
+  .error {
+    background-color: #fdedee;
+    color: #e74c3c;
+    padding: 0.75rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+  }
+  
+  .note {
+    margin-top: 1.5rem;
+    text-align: center;
+    font-size: 0.9rem;
+    color: #666;
+  }
+</style>
+
+
+// src/app.css - Global styles
+
+/* Add these lines to your src/app.css */
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700&display=swap');
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
+  line-height: 1.6;
+  color: #333;
+  background-color: #fff;
+}
+
+/* For Persian text content */
+.persian-text {
+  font-family: 'Vazirmatn', 'Tahoma', sans-serif;
+  direction: rtl;
+  text-align: right;
+}
+
+a {
+  color: #4a56e2;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  line-height: 1.2;
+}
+
+button {
+  cursor: pointer;
+}
+
+//src/lib/websocket.ts
+
+import { writable } from 'svelte/store';
+
+// Store for WebSocket connection status
+export const wsStatus = writable('disconnected');
+
+// Store for player data
+export const players = writable({});
+
+// Store for game data
+export const gameData = writable(null);
+
+let ws: WebSocket | null = null;
+let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+
+export function connectWebSocket(url: string) {
+  // Clear any existing reconnect timeout
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
+  }
+  
+  // Close existing connection
+  if (ws) {
+    ws.close();
+  }
+  
+  wsStatus.set('connecting');
+  
+  ws = new WebSocket(url);
+  
+  ws.onopen = () => {
+    wsStatus.set('connected');
+    console.log('WebSocket connected');
+  };
+  
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      
+      switch (data.type) {
+        case 'roomStatus':
+          players.set(data.players || {});
+          break;
+        case 'startGame':
+          gameData.set(data);
+          break;
+        default:
+          console.log('Received unknown message type:', data.type);
+      }
+    } catch (error) {
+      console.error('Error parsing WebSocket message:', error);
+    }
+  };
+  
+  ws.onerror = (error) => {
+    console.error('WebSocket error:', error);
+    wsStatus.set('error');
+  };
+  
+  ws.onclose = () => {
+    wsStatus.set('disconnected');
+    console.log('WebSocket disconnected');
+    
+    // Set a reconnect timeout
+    reconnectTimeout = setTimeout(() => {
+      connectWebSocket(url);
+    }, 5000);
+  };
+  
+  return {
+    send: (data: any) => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(data));
+      } else {
+        console.error('WebSocket not connected');
+      }
+    },
+    close: () => {
+      if (ws) {
+        ws.close();
+      }
+    }
+  };
+}
+
+// src/types.ts - TypeScript types
+export interface Player {
+  name: string;
+  isReady: boolean;
+}
+
+export interface GameData {
+  text: string;
+  StartTime: string;
+  IsActive: string;
+}
+
+export interface WordCompletePayload {
+  type: 'wordComplete';
+  content: {
+    word: string;
+  };
+}
+
+export interface JoinPayload {
+  type: 'join';
+  content: {
+    room: string;
+  };
+}
+
+export interface ReadyPayload {
+  type: 'ready';
+}
+
+// src/hooks.server.ts - SvelteKit server hooks
+// This file might be used for server-side authentication, but we'll keep it minimal
+export async function handle({ event, resolve }) {
+  // You can add server-side authentication here if needed
+  return await resolve(event);
+}
+
+

@@ -2,22 +2,19 @@
   import { onMount, tick, createEventDispatcher } from 'svelte';
   import { goto } from '$app/navigation';
   
-
   export let gameData: {
     text: string,
     StartTime: string,
-    IsActive: string,
-    language?: string // Add language property
+    IsActive: string
   };
   export let onWordComplete: (word: string) => void;
+  export let isRTL: boolean = false;
   
   // Add event dispatcher to communicate with parent
   const dispatch = createEventDispatcher();
-  let textContainer;
-  let userInput = "";
-  let errorCount = 0;
-  let totalTyped = 0;
-  let cursorPos = 0;
+  
+  let displayText = '';
+  let displayWords = [];
   let gameText = '';
   let textArray: string[] = [];
   let currentPosition = 0;
@@ -31,7 +28,6 @@
   let correctChars = 0;
   let totalChars = 0;
   let errorState = false; // Flag to track if user is in error state
-  let isPersian = false; // Flag for Persian text
   
   // Progress tracking - from server only
   let playerProgress: Record<string, number> = {};
@@ -46,8 +42,16 @@
   let finalLeaderboard: Record<number, string> = {};
   
   $: if (gameData) {
-    gameText = gameData.text;
-    textArray = gameText.split('');
+    gameText = "سیب خیار خیار موز";
+    textArray = gameText.split("");
+    if (isRTL) {
+    // For Persian, we need to properly format the text for display
+        displayText = gameText;
+        displayWords = displayText.split(' ').map(word => word.trim()).filter(word => word.length > 0);
+    } else {
+        displayText = gameText;
+        displayWords = [];
+    }
     isActive = "TRUE";
     startTime = new Date(gameData.StartTime);
     currentPosition = 0;
@@ -58,107 +62,79 @@
     totalChars = 0;
     errorState = false;
     gameEnded = false;
-    // Set Persian flag if language is specified
-    isPersian = gameData.language === 'persian';
     // Reset player ranks
     playerRanks = {};
     finalLeaderboard = {};
   }
   
-  $: if (totalTyped> 0) {
-    accuracy = Math.round(((totalTyped - errorCount) / totalTyped) * 100);
+  $: if (totalChars > 0) {
+    accuracy = Math.round((correctChars / totalChars) * 100);
   }
-
-  console.log(isPersian)
- 
-  function hasError() {
-      // بررسی کل متن وارد شده تا موقعیت فعلی
-      for (let i = 0; i < userInput.length; i++) {
-          if (userInput[i] !== gameText[i]) {
-              return true;
-          }
-      }
-      return false;
-  } 
   
- function handleKeydown(e) {
-      if (!isActive || gameEnded) return ;
-      e.preventDefault();
-      
-      if (e.key === "Backspace") {
-          if (cursorPos > 0) {
-              cursorPos--;
-            userInput = userInput.substring(0, cursorPos);
-            if (errorState && currentPosition >= 0) {
-                // Check if we've backspaced to a correct state
-                if (currentPosition === 0 || typedText.substring(0, currentPosition) === gameText.substring(0, currentPosition)) {
-                    errorState = false;
-                }
-            }
-          }
-      } else if (e.key.length === 1) {
-          // اگر خطا وجود دارد اجازه حرکت به جلو را نمی‌دهیم
-          if (errorState){
-              return;
-          }
-          if (hasError()) {
-              // فقط اگر کاراکتر جدید صحیح است و در همان موقعیت قبلی، اجازه تایپ می‌دهیم
-              if (isCorrectChar(e.key, cursorPos - 1)) {
-                  userInput = userInput.substring(0, cursorPos - 1) + e.key + userInput.substring(cursorPos);
-              }
-              // در غیر این صورت، کاربر باید ابتدا از Backspace استفاده کند
-          } else {
-              // اگر خطایی نداریم، اجازه تایپ می‌دهیم
-              if (cursorPos < gameText.length) {
-                  // فقط اگر کاراکتر صحیح است، اجازه تایپ می‌دهیم
-                  if (isCorrectChar(e.key, cursorPos)) {
-                      if (cursorPos === userInput.length) {
-                          userInput += e.key;
-                      } else {
-                          userInput = userInput.substring(0, cursorPos) + e.key + userInput.substring(cursorPos);
-                      }
 
-                      totalTyped++
-                      if (e.key === ' ' || cursorPos + 1 === gameText.length){
-                          if (cursorPos + 1 === gameText.length){
-                              cursorPos++
-                          }
-                          console.log("here is the current pos" + ` ${cursorPos}` + `and here is the gameText.length ${gameText.length}`)
-                          const completedWord = gameText.substring(currentWordStart, cursorPos).trim();
-                            console.log(completedWord)
-                            if (completedWord) {
-                              onWordComplete(completedWord);
-                              currentWordStart = cursorPos;
-                              wordsTyped++;
-                            }
-                      }
-                      cursorPos++;
-                  } else {
-                      errorState = true;
-                      errorCount++;
-                      totalTyped++;
 
-                      if (cursorPos === userInput.length) {
-                          userInput += e.key
-                      } else {
-                          userInput = userInput.substring(0, cursorPos) + e.key + userInput.substring(cursorPos);
-                      }
-                      cursorPos++;
-                        
-                      
-                  }
-                  // در غیر این صورت، کاراکتر را نادیده می‌گیریم
-              }
+async function handleKeydown(event: KeyboardEvent) {
+  if (!isActive || gameEnded) return;
+  
+  // Only process printable characters and special keys like backspace
+  if (event.key.length === 1 || event.key === 'Backspace') {
+    event.preventDefault();
+    
+    if (event.key === 'Backspace') {
+      // Backspace handling remains the same
+      if (currentPosition > 0) {
+        currentPosition--;
+        typedText = typedText.substring(0, currentPosition);
+        
+        if (errorState && currentPosition >= 0) {
+          if (currentPosition === 0 || typedText.substring(0, currentPosition) === gameText.substring(0, currentPosition)) {
+            errorState = false;
           }
+        }
+      }
+    } else {
+      // If in error state, don't allow typing except backspace
+      if (errorState) {
+        return;
       }
       
-      tick();
-      updateDisplay()
-  } 
-  
-  function handleClick() {
-      textContainer.focus();
+      // Regular character typed
+      const isCorrect = event.key === textArray[currentPosition];
+      
+      if (isCorrect) {
+        typedText = typedText + event.key;
+        currentPosition++;
+        
+        // Update statistics
+        totalChars++;
+        correctChars++;
+        
+        // Check if a word is completed (space or end of text)
+        // For Persian, we need to consider zero-width non-joiner and other special characters
+        if (event.key === ' ' || currentPosition === textArray.length) {
+          const completedWord = gameText.substring(currentWordStart, currentPosition).trim();
+          if (completedWord) {
+            onWordComplete(completedWord);
+            currentWordStart = currentPosition;
+            wordsTyped++;
+          }
+        }
+      } else {
+        // Incorrect character - enter error state
+        typedText = typedText + event.key;
+        currentPosition++;
+        errorState = true;
+        
+        // Update statistics
+        totalChars++;
+        // Don't increment correctChars
+      }
+    }
+    
+    await tick();
   }
+}
+    
   onMount(() => {
     window.addEventListener('keydown', handleKeydown);
     
@@ -170,7 +146,6 @@
       // Fallback to a random guest ID
       currentUserId = `Guest_${Math.floor(Math.random() * 10000)}`;
     }
-    updateDisplay()
     
     return () => {
       window.removeEventListener('keydown', handleKeydown);
@@ -197,9 +172,7 @@
     if (results && results.leaderboard) {
       finalLeaderboard = results.leaderboard;
     }
-    errorCount = 0;
-    totalTyped = 0;
-
+    
     isActive = false;
   }
   
@@ -257,173 +230,34 @@
     return playerRanks[currentUserId] || 
       (sortedPlayers.findIndex(([playerId]) => playerId === currentUserId) + 1);
   }
+ function logging(){
+    console.log(gameText)
+    console.log(textArray)
+ }
+ const mylogger = setTimeout(logging , 5000)
 
-  function splitIntoWords(text){
-      return text.split(" ")
+
+ // Helper functions for Persian text display
+function getGlobalCharIndex(wordIndex, charIndex) {
+  let index = 0;
+  for (let i = 0; i < wordIndex; i++) {
+    index += displayWords[i].length + 1; // +1 for space
   }
+  return index + charIndex;
+}
 
-  function findCurrentWordAndPosition(position) {
-      let words = splitIntoWords(gameText);
-      let charCount = 0;
-      
-      for (let i = 0; i < words.length; i++) {
-          if (position < charCount + words[i].length) {
-              return {
-                  wordIndex: i,
-                  charIndex: position - charCount,
-                  word: words[i]
-              };
-          }
-          
-          // اضافه کردن طول کلمه و یک فاصله
-          charCount += words[i].length;
-          if (i < words.length - 1) {
-              charCount++; // برای فاصله
-          }
-          
-          // اگر درست روی فاصله است
-          if (position === charCount - 1) {
-              return {
-                  wordIndex: i,
-                  charIndex: words[i].length,
-                  word: words[i],
-                  isSpace: true
-              };
-          }
-      }
-      
-      // اگر به انتهای متن رسیده باشیم
-      return {
-          wordIndex: words.length - 1,
-          charIndex: words[words.length - 1].length,
-          word: words[words.length - 1]
-      };
+function getSpaceIndexAfterWord(wordIndex) {
+  let index = 0;
+  for (let i = 0; i <= wordIndex; i++) {
+    index += displayWords[i].length;
+    if (i < wordIndex) index += 1; // +1 for space
   }
-
-  function isCorrectChar(key, position) {
-      return gameText[position] === key;
-  }
-
-  function updateDisplay() {
-      console.log(errorState)
-      console.log("updating Display !!!!!")
-      const words = splitIntoWords(gameText);
-      console.log(words)
-      const currentPos = findCurrentWordAndPosition(cursorPos);
-      
-      textContainer.innerHTML = "";
-      
-      let charCountTotal = 0;
-      
-      // پردازش هر کلمه
-      for (let i = 0; i < words.length; i++) {
-          const word = words[i];
-          const wordSpan = document.createElement("span");
-          wordSpan.className = "word";
-          
-          // تعیین وضعیت کلمه فعلی
-          if (i < currentPos.wordIndex) {
-              // کلمه کامل تایپ شده
-              const typedPart = userInput.substring(charCountTotal, charCountTotal + word.length);
-              const isCorrect = typedPart === word;
-              wordSpan.className = `word ${isCorrect ? 'correct' : 'incorrect'}`;
-              wordSpan.textContent = word;
-          } 
-          else if (i === currentPos.wordIndex) {
-              // کلمه فعلی که در حال تایپ است
-              wordSpan.className = "word current";
-              
-              // قسمت تایپ شده کلمه فعلی
-              for (let j = 0; j < word.length; j++) {
-                  console.log(errorState)
-                  const charSpan = document.createElement("span");
-                  
-                  if (j < currentPos.charIndex) {
-                      // کاراکترهای تایپ شده
-                      const typedIndex = charCountTotal + j;
-                      const isCharCorrect = typedIndex < userInput.length && 
-                                            userInput[typedIndex] === word[j];
-                      
-                      charSpan.className = isCharCorrect ? "correct" : "incorrect";
-                      charSpan.textContent = word[j];
-                  } 
-                  else if (j === currentPos.charIndex) {
-                      // کاراکتر فعلی
-                      charSpan.className = "current-char";
-                      charSpan.textContent = word[j];
-                      
-                      // اضافه کردن مکان‌نما
-                      
-                  } 
-
-                  else if (j === currentPos.charIndex && errorState){
-                      console.log("error is enabled")
-                      charSpan.className = "current-char error";
-                      charSpan.textContent = word[j]
-                  }
-                  else {
-                      // کاراکترهای باقیمانده در کلمه فعلی
-                      charSpan.className = "pending";
-                      charSpan.textContent = word[j];
-                  }
-                  
-                  wordSpan.appendChild(charSpan);
-              }
-          } 
-          else {
-              // کلمات آینده
-              wordSpan.className = "word pending";
-              wordSpan.textContent = word;
-          }
-          
-          textContainer.appendChild(wordSpan);
-          
-          // اضافه کردن فاصله بین کلمات
-          if (i < words.length - 1) {
-              const spaceSpan = document.createElement("span");
-              
-              if ( charCountTotal + word.length === cursorPos && errorState) {
-                  spaceSpan.className = "current-char error";
-                  spaceSpan.textContent = " ";
-              }
-              else if (charCountTotal + word.length === cursorPos) {
-                  // مکان‌نما روی فاصله
-                  spaceSpan.className = "current-char";
-                  spaceSpan.textContent = " ";
-                  
-                  
-              } else if (charCountTotal + word.length < cursorPos) {
-                  // فاصله تایپ شده
-                  const spaceIndex = charCountTotal + word.length;
-                  const isSpaceCorrect = spaceIndex < userInput.length && 
-                                        userInput[spaceIndex] === " ";
-                  
-                  spaceSpan.className = isSpaceCorrect ? "correct" : "incorrect";
-                  spaceSpan.textContent = " ";
-              } else {
-                  // فاصله آینده
-                  spaceSpan.className = "pending";
-                  spaceSpan.textContent = " ";
-              }
-              
-              textContainer.appendChild(spaceSpan);
-          }
-          
-          // به‌روزرسانی شمارنده کاراکتر
-          charCountTotal += word.length;
-          if (i < words.length - 1) {
-              charCountTotal++; // برای فاصله
-          }
-      }
-      
-      // اگر به انتهای متن رسیده باشیم، مکان‌نما را نمایش دهیم
-      
-  }
-  
+  return index;
+}
 </script>
 
 <div class="game-container">
-  <h2>Typing Game {isPersian ? '(Persian)' : ''}</h2>
+  <h2>Typing Game {isRTL ? '(Persian)' : ''}</h2>
   
   {#if gameEnded}
     <div class="game-end-popup">
@@ -439,7 +273,7 @@
           </ul>
         </div>
         
-        <!-- Final leaderboard display -->
+        <!-- New final leaderboard display -->
         <div class="final-leaderboard">
           <h4>Final Leaderboard</h4>
           <table>
@@ -535,9 +369,36 @@
       </div>
     </div>
     
-    <div bind:this={textContainer} class="text-container" class:error-state={errorState} class:rtl={isPersian} tabindex="0" on:keydown={handleKeydown} >
-      
-    </div>
+    <!-- Replace the text display section with this -->
+    <div class="text-display" class:error-state={errorState} class:rtl={isRTL} dir={isRTL ? 'rtl' : 'ltr'} tabindex="0">
+      {#if isRTL && displayWords.length > 0}
+        <!-- Persian text display mode - better word rendering -->
+        <div class="persian-text-container">
+          {#each displayWords as word, wordIndex}
+            <span class="persian-word">
+              {#each word.split('') as char, charIndex}
+                {@const globalIndex = getGlobalCharIndex(wordIndex, charIndex)}
+                <span 
+                  class={`char ${getCharClass(char, globalIndex)} ${globalIndex === currentPosition ? 'current' : ''}`}
+                >{char}</span>
+              {/each}
+            </span>
+            {#if wordIndex < displayWords.length - 1}
+              <span class="space-char"
+                  class:typed={getSpaceIndexAfterWord(wordIndex) < typedText.length}
+                  class:current={getSpaceIndexAfterWord(wordIndex) === currentPosition}> </span>
+            {/if}
+          {/each}
+        </div>
+      {:else}
+        <!-- Standard character-by-character display for non-RTL -->
+        {#each textArray as char, index}
+          <span 
+            class={`char ${getCharClass(char, index)} ${index === currentPosition ? 'current' : ''}`}
+          >{char}</span>
+        {/each}
+      {/if}
+    </div> 
   {:else if !gameEnded}
     <div class="waiting">
       <p>Waiting for the game to start...</p>
@@ -546,32 +407,6 @@
 </div>
 
 <style>
-  :global(.error){
-    background-color: #ffdddd !important;
-    color: #d32f2f !important;
-    border-bottom: 2px solid #d32f2f;
-  }
-
-  .error-message {
-    background-color: #ffebee;
-    color: #d32f2f;
-    padding: 0.75rem 1.5rem;
-    border-radius: 4px;
-    margin: 1rem 0;
-    font-weight: bold;
-    border-left: 4px solid #d32f2f;
-    animation: pulse 1.5s infinite;
-    width: 100%;
-    max-width: 800px;
-    text-align: center;
-  }
-
-  .text-container.error-state {
-    background-color: #fff8f8;
-    box-shadow: 0 0 0 2px #ffcdd2, 0 2px 8px rgba(0, 0, 0, 0.1);
-    transition: background-color 0.3s ease;
-  }
-
   .game-container {
     display: flex;
     flex-direction: column;
@@ -742,7 +577,7 @@
     font-size: 1.5rem;
     line-height: 2;
     text-align: left;
-    font-family: "Vazirmatn", "Tahoma", monospace; /* Add Persian font */
+    font-family: Tahoma, Arial, sans-serif;
     white-space: pre-wrap;
     position: relative;
     outline: none;
@@ -750,10 +585,11 @@
     transition: background-color 0.3s;
   }
   
-  /* RTL support for Persian text */
+  /* RTL text styling */
   .text-display.rtl {
     direction: rtl;
     text-align: right;
+    font-family: 'Vazirmatn', Tahoma, Arial, sans-serif;
   }
   
   .text-display.error-state {
@@ -953,98 +789,4 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0; }
   }
-
-  :global(body) {
-      font-family: 'IRANSans', 'Vazir', 'Tahoma', sans-serif;
-      text-align: center;
-      margin-top: 50px;
-      font-size: 24px;
-  }
-  
-  .text-container {
-      width: 80%;
-      margin: 0 auto;
-      padding: 15px;
-      border: 1px solid #007bff;
-      border-radius: 5px;
-      text-align: right;
-      line-height: 1.5;
-      min-height: 50px;
-      position: relative;
-      cursor: text;
-      word-spacing: 5px;
-  }
-  
-  .text-container:focus {
-      outline: 2px solid #007bff;
-      box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
-  }
-  
-  /* کلاس‌های رنگ متن */
-  :global(.word) {
-      display: inline-block;
-      margin: 0 2px;
-      white-space: nowrap;
-  }
-  
-  :global(.correct) {
-      color: green;
-  }
-  
-  :global(.incorrect) {
-      color: red;
-  }
-  
-  :global(.pending) {
-      color: gray;
-  }
-  
-  :global(.current) {
-      position: relative;
-  }
-  
-  :global(.current-char) {
-      background-color: #ffe066;
-  }
-  
-  /* مکان‌نما */
-  :global(.cursor) {
-      display: inline-block;
-      width: 2px;
-      height: 1.2em;
-      background-color: black;
-      animation: blink 1s infinite;
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-  }
-  
-  @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
-  }
-  
-  /* دکمه شروع مجدد */
-  .reset-btn {
-      margin-top: 20px;
-      padding: 10px 25px;
-      font-size: 16px;
-      background-color: #f8f9fa;
-      border: 1px solid #ced4da;
-      border-radius: 4px;
-      cursor: pointer;
-  }
-  
-  .reset-btn:hover {
-      background-color: #e9ecef;
-  }
-  
-  .error-message {
-      color: red;
-      margin-top: 10px;
-      font-size: 16px;
-  }
-  
-  /* برای حل مشکل فونت */
-  @import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/font-face.css');
 </style>

@@ -7,14 +7,15 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/joho/godotenv"
 	"golang.org/x/exp/rand"
-	"golang.org/x/text/cases"
 )
 
 
@@ -50,6 +51,7 @@ type GameState struct {
 	PlayerProgress  map[string]*PlayerWordRecord    `json:"playerProgress"` // tracks words completed by each player
 	leaderBoard     map[string]*Client          `json:"leaderBoard,omitempty"`
 	TotalWords      int              `json:"totalWords"`
+	InGameUsers      map[string]*Client        `json:"inGameUsers"`
 }
 
 type GameMessage struct {
@@ -63,9 +65,13 @@ type roomStatus struct {
 
 
 func NewGameServer(apiURL string) *GameServer {
+	rooms := make(map[string]map[string]*Client)
+	rooms["room1"] = make(map[string]*Client)
+	rooms["room2"] = make(map[string]*Client)
+	rooms["room3"] = make(map[string]*Client)
 	return &GameServer{
 		clients: make(map[string]*Client),
-		rooms: make(map[string]map[string]*Client),
+		rooms: rooms,
 		games: make(map[string]*GameState),
 		register: make(chan *Client),
 		unregister: make(chan *Client),
@@ -81,6 +87,7 @@ func NewGameServer(apiURL string) *GameServer {
 func (gs *GameServer) userRanking(client *Client){
 	playerPosition := len(gs.games[client.room].leaderBoard) + 1
 	gs.games[client.room].leaderBoard[strconv.Itoa(playerPosition)] = client
+
 	player := make(map[string]int)
 	player[client.id] = playerPosition
 	playerRank := struct {
@@ -96,21 +103,50 @@ func (gs *GameServer) userRanking(client *Client){
 
 }
 
-func generateCompetitionText() string {
-	words := []string{
-		"the", "be", "to", "of", "and", "a", "in", "that", "have", "I",
+func generateCompetitionText(room string) (string, []string ) {
+	// Common Persian words for room3
+	persianWords := []string{
+		"سلام", "جهان", "کتاب", "خانه", "درخت", "آزادی", "عشق", "دوست", "خورشید", "ماه",
+		"ستاره", "آسمان", "زمین", "رود", "کوه", "گل", "پرنده", "باغ", "شهر", "روستا",
 	}
-	
+
+	// English words for other rooms
+	englishWords := []string{
+		"the", "be", "to", "of", "and", "a", "in", "that", "have", "I", "You", "Yeah",
+		"Home", "Jump", "Some", "Action", "Jail", "Music", "Star", "Five", "outside",
+	}
+
+	var words []string
 	var result []string
-	// Generate 20 random words
-	for i := 0; i < 3; i++ {
-		result = append(result, words[rand.Intn(len(words))])
+	var displayText string
+
+	if room == "room3" {
+		words = persianWords
+	} else {
+		words = englishWords
 	}
-	
-	return strings.Join(result, " ")
+
+	// Check if the word list is empty
+	if len(words) == 0 {
+		fmt.Println("ohhhahahahahha")
+	}
+
+	// Generate 10 random words
+	for i := 0; i < 10; i++ {
+		word := words[rand.Intn(len(words))]
+		result = append(result, word)
+	}
+
+	if room == "room3" {
+		// Join without spaces for Persian
+		displayText = strings.Join(result, " ")
+	} else {
+		// Join with spaces for English
+		displayText = strings.Join(result, " ")
+	}
+
+	return displayText, result
 }
-
-
 
 func (gs *GameServer) Run() {
     for {
@@ -139,7 +175,31 @@ func (gs *GameServer) Run() {
 }
 
 
+func (gs *GameServer) roomsStatus(client *Client){
+	roomsStatus := struct {
+		Type    string                         `json:"type"` 
+		Rooms   map[string]map[string]*Client  `json:"rooms"` 
+  
+	}{
+		Type: "roomsStatus",
+		Rooms: gs.rooms,
+	}
+
+	messageBytes, _ := json.Marshal(roomsStatus)
+	select{
+			case client.sendChan <- messageBytes:
+				fmt.Println("message goes to user")	
+			default:
+				close(client.sendChan)
+				delete(gs.clients, client.id)
+			}
+
+
+}
+
 func (gs *GameServer) roomStatus(client *Client){
+	
+	fmt.Println(client.username, "username hereeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee!!!@!@!@!@!@!@!@!@!@!@@!@!")
 	guests := make(map[string]bool)
 	for key , value := range gs.rooms[client.room]{
 		fmt.Println(key, "salam in key hasttttttttttttttttttttttttttttttttttttttttttttttttttttt")
@@ -154,7 +214,35 @@ func (gs *GameServer) roomStatus(client *Client){
 	}
 			
 	messageBytes, _ := json.Marshal(roomStatus)
-	gs.broadcastToRoom(client.room , messageBytes)
+	if clients, ok := gs.rooms[client.room]; ok{
+		for _, thatclient := range clients {
+			if _ , gameExist := gs.games[client.room]; gameExist {
+				fmt.Println(gs.games[client.room].InGameUsers ,  "***********************************************************************************************************************")
+				if _ , ok := gs.games[client.room].InGameUsers[thatclient.id]; !ok {
+					fmt.Println("where we want)()()()(((((((((((((((((((((((((((((((((()))))))))))))))))))))))))))))))))")
+					select{
+						case thatclient.sendChan <- messageBytes:
+							fmt.Println("message goes to user")	
+						default:
+							close(client.sendChan)
+							delete(gs.clients, client.id)
+						}
+
+				}
+			}else{
+					select{
+						case thatclient.sendChan <- messageBytes:
+							fmt.Println("message goes to user")	
+						default:
+							close(client.sendChan)
+							delete(gs.clients, client.id)
+						}
+					}	
+
+
+		}
+	}
+
 
 }
 
@@ -168,8 +256,14 @@ func (gs *GameServer) joinPlayer(client *Client, message json.RawMessage){
 	room := result["room"]
 	fmt.Println(room , "here is the messeage !@")
 	client.room = room
+	gs.mutex.Lock()
+	gs.clients[client.id] = client
+    if _, exists := gs.rooms[client.room]; !exists {
+        gs.rooms[client.room] = make(map[string]*Client)
+    }
+    gs.rooms[client.room][client.id] = client
+	gs.mutex.Unlock()
 	gs.roomStatus(client)
-	gs.register <- client
 	fmt.Println("here is the player room" , client.room)
 	fmt.Println("important one ########################################" , gs.rooms[client.room])
 	
@@ -182,26 +276,41 @@ func (gs *GameServer) joinPlayer(client *Client, message json.RawMessage){
 func (gs *GameServer) readyPlayer(client *Client){
 	client.isReady = true
 	gs.roomStatus(client)
-	fmt.Println("player select ready button , so player ready status goes ", client.isReady)
 	for key, value := range gs.rooms[client.room] {
+		fmt.Println(key, "")
         if value.isReady != true{
 			fmt.Println("player ", value.username, "with this id : ", key ," is not ready and game does not going to start")
 			return
+		}else{
+			fmt.Println(key , value.isReady , "yoooooooooo pretty motherfoucker gooooooooooooooooooooooooooooooo")
 		}
 		
     } 
 	gs.startNewGame(client.room)
+	fmt.Println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfter rommstatus", gs.games[client.room].InGameUsers)
 }
 
 
 func (gs *GameServer) endGame(client *Client){
+	fmt.Println("end offfffffffffffffffffffffff gameeeeeeeeeeeeeeeeeeeee")
+	for key, value := range gs.rooms[client.room] {
+		fmt.Println(value.isReady , "active brossss")
+		gs.rooms[client.room][key].isReady = false
+	}
 	if len(gs.games[client.room].leaderBoard) == len(gs.rooms[client.room]){
-			endGameMessage := &GameMessage{
+			
+			endGameMessage := struct{
+				Type			  string				`json:"type"`
+				LeaderBoard       map[string]*Client    `json:"leaderboard"`
+			}{
 				Type: "endGame",
+				LeaderBoard: gs.games[client.room].leaderBoard,
+
 			}
 		messageBytes, _ := json.Marshal(endGameMessage)
 		gs.broadcastToRoom(client.room , messageBytes)
 		return
+
 
 	}
 	go func() {
@@ -287,34 +396,50 @@ func (gs *GameServer) wordComplete(client *Client , messageContent json.RawMessa
 
 
 func (gs *GameServer) startNewGame(room string){
-	fmt.Println("game is going to start in this room" , gs.rooms[room])	
-	gameText := generateCompetitionText()
+	for _, client := range gs.rooms[room]{
+		client.isReady = false
+	}
+	fmt.Println("game is going to start in this room!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" , gs.rooms[room])	
+	displayText , wordList := generateCompetitionText(room)
+	inGameUsers := make(map[string]*Client)
+	for id, client := range gs.rooms[room] {
+        inGameUsers[id] = client
+    }
 	gameState := &GameState{
-		Text:           gameText,
+		Text:           displayText,
 		StartTime:      time.Now(),
 		IsActive:       true,
 		PlayerProgress: make(map[string]*PlayerWordRecord),
 		leaderBoard:    make(map[string]*Client),
-		TotalWords:     len(strings.Fields(gameText)),
+		TotalWords:     len(wordList),
+		InGameUsers:    inGameUsers,
 	}
 	for key , value := range gs.clients {
 		gameState.PlayerProgress[key] = &PlayerWordRecord{
 			username: value.username,
-			remainedWords: strings.Fields(gameText),
+			remainedWords: wordList,
 		}
 	}
 	gs.games[room] = gameState
 
 	
+	language := "en"
+	if room == "room3" {
+		language = "fa"
+	}
 
 	startMessage := struct {
 		Type string    `json:"type"`
 		Text string    `json:"text"`
+		Words []string `json:"words"`
 		Time time.Time `json:"startTime"`
+		Language string `json:"language"`
 	}{
 		Type: "startGame",
 		Text: gameState.Text,
+		Words: wordList,
 		Time: gameState.StartTime,
+		Language: language,
 	}
 	log.Println("in start New Game Line 129")
 	for key , value := range gameState.PlayerProgress{
@@ -323,6 +448,14 @@ func (gs *GameServer) startNewGame(room string){
 	messageBytes, _ := json.Marshal(startMessage)
 	gs.broadcastToRoom(room , messageBytes)
 	log.Println("after broadcast for ###startNewGame%%%%")
+	fmt.Println(gs.rooms[room], "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+	for key , value := range gs.rooms[room]{
+		fmt.Println(key , "MTF key")
+		fmt.Println(value , "MTF value")
+	}
+	fmt.Println(gs.games[room].InGameUsers, "{}{}{}{}{}{}")
+
+	
 }
 
 
@@ -424,6 +557,8 @@ func (gs *GameServer) handleGameMessage(client *Client, message []byte){
 		return 
 	}
 	switch gameMessage.Type{
+	case "roomsStatus" :
+		gs.roomsStatus(client)
 	case "join":
 		log.Println("a joining is happening !!!")
 		gs.joinPlayer(client , gameMessage.Content)
@@ -507,6 +642,7 @@ func (gs *GameServer) broadcastToRoom(room string, message []byte){
 
 
 
+
 type AuthRequest struct {
 	Scheme string `json:"scheme"`
 	Credentials string `json:"credentials"`
@@ -544,11 +680,14 @@ func verifyTokenWithFastAPI(token string) (*AuthResponse, error) {
 
 
 func main() {
+	godotenv.Load(".env")
+	portString := os.Getenv("PORT")
     gameServer := NewGameServer("ws://127.0.0.1:8000/ws")
     go gameServer.Run()
 
-    http.HandleFunc("/ws", gameServer.HandleWebSocket)
-    log.Fatal(http.ListenAndServe(":9000", nil))
+    http.HandleFunc("/ws", gameServer.HandleWebSocket) // passing HandleWebSocket method for HandleFunc method ass a value ( that first citizen function kind of things )
+	log.Printf("Server starting on port %v", portString)
+    log.Fatal(http.ListenAndServe("0.0.0.0:9000", nil))
 }
 
 

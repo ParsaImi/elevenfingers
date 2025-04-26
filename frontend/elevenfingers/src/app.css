@@ -1,3 +1,6 @@
+/* Add these lines to your src/app.css */
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700&display=swap');
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -9,6 +12,13 @@ body {
   line-height: 1.6;
   color: #333;
   background-color: #fff;
+}
+
+/* For Persian text content */
+.persian-text {
+  font-family: 'Vazirmatn', 'Tahoma', sans-serif;
+  direction: rtl;
+  text-align: right;
 }
 
 a {
