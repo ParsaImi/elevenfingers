@@ -1,6 +1,10 @@
 from fastapi import FastAPI
-from routes import auth
 import os
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Add the parent directory to the Python path
+sys.path.insert(0, current_dir)
+from myroutes import auth
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 

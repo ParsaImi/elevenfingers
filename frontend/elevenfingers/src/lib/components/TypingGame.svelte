@@ -81,13 +81,14 @@
       return false;
   } 
   
- function handleKeydown(e) {
-      if (!isActive || gameEnded) return ;
-      e.preventDefault();
-      
-      if (e.key === "Backspace") {
-          if (cursorPos > 0) {
-              cursorPos--;
+function handleKeydown(e) {
+    console.log(e.key)
+    if (!isActive || gameEnded) return;
+    e.preventDefault();
+    
+    if (e.key === "Backspace") {
+        if (cursorPos > 0) {
+            cursorPos--;
             userInput = userInput.substring(0, cursorPos);
             if (errorState && currentPosition >= 0) {
                 // Check if we've backspaced to a correct state
@@ -95,66 +96,57 @@
                     errorState = false;
                 }
             }
-          }
-      } else if (e.key.length === 1) {
-          // اگر خطا وجود دارد اجازه حرکت به جلو را نمی‌دهیم
-          if (errorState){
-              return;
-          }
-          if (hasError()) {
-              // فقط اگر کاراکتر جدید صحیح است و در همان موقعیت قبلی، اجازه تایپ می‌دهیم
-              if (isCorrectChar(e.key, cursorPos - 1)) {
-                  userInput = userInput.substring(0, cursorPos - 1) + e.key + userInput.substring(cursorPos);
-              }
-              // در غیر این صورت، کاربر باید ابتدا از Backspace استفاده کند
-          } else {
-              // اگر خطایی نداریم، اجازه تایپ می‌دهیم
-              if (cursorPos < gameText.length) {
-                  // فقط اگر کاراکتر صحیح است، اجازه تایپ می‌دهیم
-                  if (isCorrectChar(e.key, cursorPos)) {
-                      if (cursorPos === userInput.length) {
-                          userInput += e.key;
-                      } else {
-                          userInput = userInput.substring(0, cursorPos) + e.key + userInput.substring(cursorPos);
-                      }
+        }
+    } else if (e.key.length === 1) {
+        // If there's an error, don't allow moving forward
+        if (errorState) {
+            return;
+        }
+        
+        if (cursorPos < gameText.length) {
+            // Only allow typing if the character is correct
+            if (gameText[cursorPos] === e.key) {
+                // Update user input
+                if (cursorPos === userInput.length) {
+                    userInput += e.key;
+                } else {
+                    userInput = userInput.substring(0, cursorPos) + e.key + userInput.substring(cursorPos);
+                }
 
-                      totalTyped++
-                      if (e.key === ' ' || cursorPos + 1 === gameText.length){
-                          if (cursorPos + 1 === gameText.length){
-                              cursorPos++
-                          }
-                          console.log("here is the current pos" + ` ${cursorPos}` + `and here is the gameText.length ${gameText.length}`)
-                          const completedWord = gameText.substring(currentWordStart, cursorPos).trim();
-                            console.log(completedWord)
-                            if (completedWord) {
-                              onWordComplete(completedWord);
-                              currentWordStart = cursorPos;
-                              wordsTyped++;
-                            }
-                      }
-                      cursorPos++;
-                  } else {
-                      errorState = true;
-                      errorCount++;
-                      totalTyped++;
+                totalTyped++;
+                
+                // CHECK FOR COMPLETED WORD
+                if (e.key === ' ' || cursorPos + 1 === gameText.length) {
+                    const completedWord = gameText.substring(currentWordStart, cursorPos + 1).trim();
+                    console.log(completedWord);
+                    if (completedWord) {
+                        onWordComplete(completedWord);
+                        currentWordStart = cursorPos + 1;
+                        wordsTyped++;
+                    }
+                }
+                
+                // IMPORTANT: Only increment cursorPos ONCE - this is the key fix
+                cursorPos++;
+                
+            } else {
+                // Handle incorrect character
+                errorState = true;
+                errorCount++;
+                totalTyped++;
 
-                      if (cursorPos === userInput.length) {
-                          userInput += e.key
-                      } else {
-                          userInput = userInput.substring(0, cursorPos) + e.key + userInput.substring(cursorPos);
-                      }
-                      cursorPos++;
-                        
-                      
-                  }
-                  // در غیر این صورت، کاراکتر را نادیده می‌گیریم
-              }
-          }
-      }
-      
-      tick();
-      updateDisplay()
-  } 
+                if (cursorPos === userInput.length) {
+                    userInput += e.key;
+                } else {
+                    userInput = userInput.substring(0, cursorPos) + e.key + userInput.substring(cursorPos);
+                }
+                cursorPos++;
+            }
+        }
+    }
+    
+    updateDisplay();
+}
   
   function handleClick() {
       textContainer.focus();
@@ -305,7 +297,7 @@
   }
 
   function updateDisplay() {
-      console.log(errorState)
+      console.log(cursorPos)
       console.log("updating Display !!!!!")
       const words = splitIntoWords(gameText);
       console.log(words)
@@ -321,7 +313,7 @@
           const wordSpan = document.createElement("span");
           wordSpan.className = "word";
           
-          // تعیین وضعیت کلمه فعلی
+          // DETERMINING CURRENT WORD SITUATION
           if (i < currentPos.wordIndex) {
               // کلمه کامل تایپ شده
               const typedPart = userInput.substring(charCountTotal, charCountTotal + word.length);
@@ -535,7 +527,7 @@
       </div>
     </div>
     
-    <div bind:this={textContainer} class="text-container" class:error-state={errorState} class:rtl={isPersian} tabindex="0" on:keydown={handleKeydown} >
+    <div bind:this={textContainer} class="text-container" class:error-state={errorState} class:rtl={isPersian} tabindex="0">
       
     </div>
   {:else if !gameEnded}
