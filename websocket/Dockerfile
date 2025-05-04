@@ -1,5 +1,5 @@
 # Start from the official Golang image
-FROM golang:1.21-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -30,7 +30,6 @@ WORKDIR /root/
 
 # Copy the binary from builder
 COPY --from=builder /app/websocket-app .
-COPY --from=builder /app/.env .
 
 # Expose the application port
 EXPOSE 9000
