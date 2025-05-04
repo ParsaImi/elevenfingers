@@ -1,12 +1,39 @@
 version: '3.8'
 
 services:
+  websocket:
+    image: websocket-server:1
+    container_name: websocket_server
+    pull_policy: never
+    ports:
+      - "9000:9000"
+    environment:
+      - PORT=9000
+      # Add any other environment variables your app needs
+    restart: unless-stopped
+    # If you need to connect to other services like a database, add them here
+    networks:
+      - app-network
+  webapp:
+    image: sveltekit-webapp:1
+    pull_policy: never
+    container_name: sveltekit-app
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    networks:
+      - app-network
   nginx:
     image: nginx:alpine
     restart: always
     ports:
       - "80:80"
       - "443:443"
+    depends_on:
+      - webapp
+      - websocket
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d
       - ./certbot/conf:/etc/letsencrypt
