@@ -24,10 +24,16 @@ services:
     restart: always
 
   webapp:
-    image: nginxdemos/hello
+    image: sveltekit-webapp:1
+    pull_policy: never
+    container_name: sveltekit-app
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
     networks:
-      - app-network
-    restart: always
+      - app-network 
 
 networks:
   app-network:
