@@ -7,6 +7,7 @@ fi
 
 domains=(parsaimi.xyz www.parsaimi.xyz)
 newdomains=(game.parsaimi.xyz)
+serverdomains=(cloud.parsaimi.xyz)
 rsa_key_size=4096
 data_path="./data/certbot"
 email="parsaemani17@gmail.com" # Adding a valid address is strongly recommended
@@ -48,6 +49,16 @@ docker compose run --rm --entrypoint "\
     -subj '/CN=localhost'" certbot
 echo
 
+echo "### Creating dummy certificate for $serverdomains..."
+path="/etc/letsencrypt/live/$serverdomains"
+mkdir -p "$data_path/conf/live/$serverdomains"
+docker compose run --rm --entrypoint "\
+  openssl req -x509 -nodes -newkey rsa:$rsa_key_size -days  1\
+    -keyout '$path/privkey.pem' \
+    -out '$path/fullchain.pem' \
+    -subj '/CN=localhost'" certbot
+echo
+
 echo "### Starting nginx ..."
 docker compose up --force-recreate -d nginx
 echo
@@ -67,7 +78,12 @@ docker compose run --rm --entrypoint "\
 echo
 
 
-
+echo "### Deleting dummy certificate for $serverdomains ..."
+docker compose run --rm --entrypoint "\
+  rm -Rf /etc/letsencrypt/live/$serverdomains && \
+  rm -Rf /etc/letsencrypt/archive/$serverdomains && \
+  rm -Rf /etc/letsencrypt/renewal/$serverdomains.conf" certbot
+echo
 
 
 
@@ -83,7 +99,14 @@ echo "### Requesting Let's Encrypt certificate for $newdomains ..."
 #Join $newdomains to -d args
 newdomain_args=""
 for domain in "${newdomains[@]}"; do
-  domain_args="$newdomain_args -d $domain"
+  newdomain_args="$newdomain_args -d $domain"
+done
+
+echo "### Requesting Let's Encrypt certificate for $serverdomains ..."
+#Join $serverdomains to -d args
+serverdomain_args=""
+for domain in "${serverdomains[@]}"; do
+  serverdomain_args="$serverdomain_args -d $domain"
 done
 
 # Select appropriate email arg
@@ -94,6 +117,16 @@ esac
 
 # Enable staging mode if needed
 if [ $staging != "0" ]; then staging_arg="--staging"; fi
+
+docker compose run --rm --entrypoint "\
+  certbot certonly --webroot -w /var/www/certbot \
+    $staging_arg \
+    $email_arg \
+    $serverdomain_args \
+    --rsa-key-size $rsa_key_size \
+    --agree-tos \
+    --force-renewal" certbot
+echo
 
 docker compose run --rm --entrypoint "\
   certbot certonly --webroot -w /var/www/certbot \
@@ -114,6 +147,9 @@ docker compose run --rm --entrypoint "\
     --agree-tos \
     --force-renewal" certbot
 echo
+
+
+
 
 echo "### Reloading nginx ..."
 docker compose exec nginx nginx -s reload

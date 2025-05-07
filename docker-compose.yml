@@ -24,7 +24,7 @@ services:
     restart: always
 
   webapp:
-    image: sveltekit-webapp:1
+    image: prod-svelte-webapp:4
     pull_policy: never
     container_name: sveltekit-app
     ports:
