@@ -9,7 +9,7 @@
   
   onMount(() => {
     // Connect to WebSocket server
-    ws = new WebSocket('ws://localhost:9000/ws');
+    ws = new WebSocket('wss://websocket.parsaimi.xyz/ws');
     
     ws.onopen = () => {
       console.log('Connected to the server');

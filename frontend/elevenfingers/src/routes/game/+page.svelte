@@ -22,7 +22,7 @@
     isPersianRoom = selectedRoom === 'room3';
     
     // Connect to WebSocket server
-    ws = new WebSocket('ws://localhost:9000/ws'); // Replace with your actual WebSocket URL
+    ws = new WebSocket('wss://websocket.parsaimi.xyz/ws'); // Replace with your actual WebSocket URL
     
     ws.onopen = () => {
       console.log('Connected to the server');
