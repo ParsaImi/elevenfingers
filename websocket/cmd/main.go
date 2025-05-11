@@ -330,7 +330,17 @@ func (gs *GameServer) endGame(client *Client){
 					Type: "endGame",
 				}
 				messageBytes, _ := json.Marshal(endGameMessage)
-				gs.broadcastToRoom(client.room , messageBytes)
+				for _ , playerInGame := range gs.games[client.room].InGameUsers {
+					select{
+						case playerInGame.sendChan <- messageBytes:
+							fmt.Println("message goes to user in the gameee")	
+						default:
+							close(playerInGame.sendChan)
+							delete(gs.clients, playerInGame.id)
+						}
+					
+					
+				}
 
                 
                 break

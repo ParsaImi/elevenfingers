@@ -24,7 +24,7 @@ services:
     restart: always
 
   webapp:
-    image: prod-svelte-webapp:4
+    image: svelte_webapp:1
     pull_policy: never
     container_name: sveltekit-app
     ports:
@@ -36,7 +36,7 @@ services:
       - app-network 
 
   websocket:
-    image: websocket-server:1
+    image: golang_websocket:1
     container_name: websocket_server
     pull_policy: never
     ports:
