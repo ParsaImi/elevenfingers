@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/joho/godotenv"
 	"golang.org/x/exp/rand"
@@ -46,12 +47,13 @@ type PlayerWordRecord struct {
 
 type GameState struct {
 	Text            string            `json:"text"`
-	StartTime       time.Time         `json:"startTime"`
+	StartTime       int64         `json:"startTime"`
 	IsActive        bool              `json:"isActive"`
 	PlayerProgress  map[string]*PlayerWordRecord    `json:"playerProgress"` // tracks words completed by each player
 	leaderBoard     map[string]*Client          `json:"leaderBoard,omitempty"`
 	TotalWords      int              `json:"totalWords"`
 	InGameUsers      map[string]*Client        `json:"inGameUsers"`
+	MatchId         string           `json:"matchId"`
 }
 
 type GameMessage struct {
@@ -112,8 +114,8 @@ func generateCompetitionText(room string) (string, []string ) {
 
 	// English words for other rooms
 	englishWords := []string{
-		"the", "be", "to", "of", "and", "a", "in", "that", "have", "I", "You", "Yeah",
-		"Home", "Jump", "Some", "Action", "Jail", "Music", "Star", "Five", "outside",
+		"introductory", "preliminary", "ceremonial", "demonstrating", "graves", "speed", "hoses", "steep", "reunions", "I", "You", "Yeah",
+		"script", "devoted", "prepositions", "indie", "fascinating", "courage", "Star", "Five", "outside",
 	}
 
 	var words []string
@@ -247,6 +249,12 @@ func (gs *GameServer) roomStatus(client *Client){
 }
 
 func (gs *GameServer) joinPlayer(client *Client, message json.RawMessage){
+	if len(gs.rooms[client.room]) == 0 {
+		go func() {
+			<-time.After(10 * time.Second)
+			gs.readyToStart(client.room)
+		}()
+	}
 	fmt.Println(client.username, "eyesssssssssssssssssssssssssssssss on thissssssssssssssssssssssssssssssssssssss")
 	var result map[string]string
 	err := json.Unmarshal(message , &result)
@@ -286,12 +294,12 @@ func (gs *GameServer) readyPlayer(client *Client){
 		}
 		
     } 
-	gs.startNewGame(client.room)
+	gs.readyToStart(client.room)
 	fmt.Println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfter rommstatus", gs.games[client.room].InGameUsers)
 }
 
 
-func (gs *GameServer) endGame(client *Client){
+func (gs *GameServer) endGame(client *Client, matchId string){
 	fmt.Println("end offfffffffffffffffffffffff gameeeeeeeeeeeeeeeeeeeee")
 	for key, value := range gs.rooms[client.room] {
 		fmt.Println(value.isReady , "active brossss")
@@ -307,6 +315,8 @@ func (gs *GameServer) endGame(client *Client){
 				LeaderBoard: gs.games[client.room].leaderBoard,
 
 			}
+		gs.games[client.room].IsActive = false
+		fmt.Println("game activity goes ***&*&&&&&&&&&&&&&&*&*&*&*&*&&**&*%*%*%*%*%*%#*^#(@%&#%*&%#&*%&#%&^#*#&%@^&#$*@^*(#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!))", gs.games[client.room].IsActive )
 		messageBytes, _ := json.Marshal(endGameMessage)
 		gs.broadcastToRoom(client.room , messageBytes)
 		return
@@ -330,17 +340,21 @@ func (gs *GameServer) endGame(client *Client){
 					Type: "endGame",
 				}
 				messageBytes, _ := json.Marshal(endGameMessage)
-				for _ , playerInGame := range gs.games[client.room].InGameUsers {
-					select{
-						case playerInGame.sendChan <- messageBytes:
-							fmt.Println("message goes to user in the gameee")	
-						default:
-							close(playerInGame.sendChan)
-							delete(gs.clients, playerInGame.id)
-						}
-					
-					
-				}
+				if gs.games[client.room].MatchId == matchId{
+					fmt.Println("room status is " , gs.games[client.room].IsActive)
+					fmt.Println("players are ", gs.games[client.room].InGameUsers)
+					for _ , playerInGame := range gs.games[client.room].InGameUsers {
+						select{
+							case playerInGame.sendChan <- messageBytes:
+								fmt.Println("message goes to user in the gameee")	
+							default:
+								close(playerInGame.sendChan)
+								delete(gs.clients, playerInGame.id)
+							}
+						
+						
+					}
+			}
 
                 
                 break
@@ -397,7 +411,7 @@ func (gs *GameServer) wordComplete(client *Client , messageContent json.RawMessa
 		fmt.Println("user finished the game @@@@@@@@@@@@@@@@@@@@@@@@@@@@")
 		gs.userRanking(client)
 		fmt.Println(gs.games[client.room].leaderBoard)
-		gs.endGame(client)
+		gs.endGame(client , gs.games[client.room].MatchId)
 	}
 		
 	
@@ -405,67 +419,76 @@ func (gs *GameServer) wordComplete(client *Client , messageContent json.RawMessa
 }
 
 
+func (gs *GameServer) readyToStart(room string){
+	if _, exists := gs.games[room]; !exists {
+		gs.startNewGame(room)
+	}else if !gs.games[room].IsActive {
+		gs.startNewGame(room)
+	}
+}
+
 func (gs *GameServer) startNewGame(room string){
-	for _, client := range gs.rooms[room]{
-		client.isReady = false
-	}
-	fmt.Println("game is going to start in this room!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" , gs.rooms[room])	
-	displayText , wordList := generateCompetitionText(room)
-	inGameUsers := make(map[string]*Client)
-	for id, client := range gs.rooms[room] {
-        inGameUsers[id] = client
-    }
-	gameState := &GameState{
-		Text:           displayText,
-		StartTime:      time.Now(),
-		IsActive:       true,
-		PlayerProgress: make(map[string]*PlayerWordRecord),
-		leaderBoard:    make(map[string]*Client),
-		TotalWords:     len(wordList),
-		InGameUsers:    inGameUsers,
-	}
-	for key , value := range gs.clients {
-		gameState.PlayerProgress[key] = &PlayerWordRecord{
-			username: value.username,
-			remainedWords: wordList,
+		for _, client := range gs.rooms[room]{
+			client.isReady = false
 		}
-	}
-	gs.games[room] = gameState
+		fmt.Println("game is going to start in this room!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" , gs.rooms[room])	
+		displayText , wordList := generateCompetitionText(room)
+		inGameUsers := make(map[string]*Client)
+		for id, client := range gs.rooms[room] {
+			inGameUsers[id] = client
+		}
+		gameState := &GameState{
+			Text:           displayText,
+			StartTime:      time.Now().UTC().Add(5 * time.Second).UnixMilli(),
+			IsActive:       true,
+			PlayerProgress: make(map[string]*PlayerWordRecord),
+			leaderBoard:    make(map[string]*Client),
+			TotalWords:     len(wordList),
+			InGameUsers:    inGameUsers,
+			MatchId:		uuid.New().String(),
+		}
+		fmt.Println("the game should start at ", gameState.StartTime , "DRE")
+		for key , value := range gs.clients {
+			gameState.PlayerProgress[key] = &PlayerWordRecord{
+				username: value.username,
+				remainedWords: wordList,
+			}
+		}
+		gs.games[room] = gameState
 
-	
-	language := "en"
-	if room == "room3" {
-		language = "fa"
-	}
+		
+		language := "en"
+		if room == "room3" {
+			language = "fa"
+		}
 
-	startMessage := struct {
-		Type string    `json:"type"`
-		Text string    `json:"text"`
-		Words []string `json:"words"`
-		Time time.Time `json:"startTime"`
-		Language string `json:"language"`
-	}{
-		Type: "startGame",
-		Text: gameState.Text,
-		Words: wordList,
-		Time: gameState.StartTime,
-		Language: language,
-	}
-	log.Println("in start New Game Line 129")
-	for key , value := range gameState.PlayerProgress{
-		fmt.Println(key , value)
-	}
-	messageBytes, _ := json.Marshal(startMessage)
-	gs.broadcastToRoom(room , messageBytes)
-	log.Println("after broadcast for ###startNewGame%%%%")
-	fmt.Println(gs.rooms[room], "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
-	for key , value := range gs.rooms[room]{
-		fmt.Println(key , "MTF key")
-		fmt.Println(value , "MTF value")
-	}
-	fmt.Println(gs.games[room].InGameUsers, "{}{}{}{}{}{}")
+		startMessage := struct {
+			Type string    `json:"type"`
+			Text string    `json:"text"`
+			Words []string `json:"words"`
+			Time int64 `json:"startTime"`
+			Language string `json:"language"`
+		}{
+			Type: "startGame",
+			Text: gameState.Text,
+			Words: wordList,
+			Time: gameState.StartTime,
+			Language: language,
+		}
+		log.Println("in start New Game Line 129")
+		for key , value := range gameState.PlayerProgress{
+			fmt.Println(key , value)
+		}
+		messageBytes, _ := json.Marshal(startMessage)
+		gs.broadcastToRoom(room , messageBytes)
+		log.Println("after broadcast for ###startNewGame%%%%")
+		fmt.Println(gs.rooms[room], "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+		for key , value := range gs.rooms[room]{
+			fmt.Println(key , "MTF key")
+			fmt.Println(value , "MTF value")
+		}
+		fmt.Println(gs.games[room].InGameUsers, "{}{}{}{}{}{}")
 
-	
 }
 
 
@@ -505,6 +528,7 @@ func (gs *GameServer) HandleWebSocket(w http.ResponseWriter, r *http.Request){
 		Content: fmt.Sprintf("%s joined the game", client.username), 
 
 	}
+	
 	joinMessageBytes, _ := json.Marshal(joinMessage)
 	gs.broadcastToRoom(client.room, joinMessageBytes)
 
@@ -577,7 +601,7 @@ func (gs *GameServer) handleGameMessage(client *Client, message []byte){
 		gs.readyPlayer(client)
 	case "startGame":
 		log.Println("New Game!!!!")
-		gs.startNewGame(client.room)
+		gs.readyToStart(client.room)
 	case "wordComplete":
 		log.Println("new words come in ! ( print in handleGameMessage)")
 		gs.wordComplete(client , gameMessage.Content)

@@ -5,7 +5,7 @@
 
   export let gameData: {
     text: string,
-    StartTime: string,
+    startTime: string,
     IsActive: string,
     language?: string // Add language property
   };
@@ -23,7 +23,7 @@
   let currentPosition = 0;
   let typedText = '';
   
-  let isActive = true;
+  let isActive = false;
   let startTime: Date;
   let currentWordStart = 0;
   let wordsTyped = 0;
@@ -40,6 +40,9 @@
   // Player ranks tracking
   let playerRanks: Record<string, number> = {};
   
+  let countdownTimeLeft = 0;
+  let countdownInterval: number;
+  let gameStarted = false;
   // Game end state
   let gameEnded = false;
   let gameResults: any = null;
@@ -48,8 +51,8 @@
   $: if (gameData) {
     gameText = gameData.text;
     textArray = gameText.split('');
-    isActive = "TRUE";
-    startTime = new Date(gameData.StartTime);
+    isActive = "FALSE";
+    startTime = new Date(parseInt(gameData.startTime));
     currentPosition = 0;
     typedText = '';
     currentWordStart = 0;
@@ -63,14 +66,55 @@
     // Reset player ranks
     playerRanks = {};
     finalLeaderboard = {};
+    startCountdown();
   }
+
   
   $: if (totalTyped> 0) {
     accuracy = Math.round(((totalTyped - errorCount) / totalTyped) * 100);
   }
 
-  console.log(isPersian)
- 
+  function startCountdown() {
+      console.log(startTime)
+      console.log(gameData.startTime)
+      if (countdownInterval) {
+          clearInterval(countdownInterval)
+      }
+      const now = new Date();
+      const timeDiff = startTime.getTime() - now.getTime();
+
+      if (timeDiff <= 0) {
+          countdownTimeLeft = 0;
+          startGame();
+          return;
+      }
+
+      countdownTimeLeft = Math.ceil(timeDiff / 1000)
+
+      countdownInterval = setInterval(() => {
+          countdownTimeLeft--;
+
+          if (countdownTimeLeft <= 0) {
+              clearInterval(countdownInterval)
+              startGame()
+          }
+          console.log("time goes!!")
+        }, 1000)
+    }
+    
+  function startGame() {
+      gameStarted = true;
+      isActive = true
+
+      setTimeout(() => {
+          if (textContainer){
+                textContainer.focus();
+                updateDisplay()
+          }
+          
+          }, 100)
+  }
+  
   function hasError() {
       // بررسی کل متن وارد شده تا موقعیت فعلی
       for (let i = 0; i < userInput.length; i++) {
@@ -164,8 +208,14 @@ function handleKeydown(e) {
     }
     updateDisplay()
     
+    if (gameData && gameData.startTime) {
+      startCountdown();
+    }
     return () => {
       window.removeEventListener('keydown', handleKeydown);
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+      }
     };
   });
   
@@ -233,7 +283,7 @@ function handleKeydown(e) {
   
   function playAgain() {
     // Instead of redirecting, dispatch an event to tell parent component to go back to waiting
-    dispatch('playAgain');
+    window.location.reload();
   }
   
   // Get player rank from the results
@@ -411,6 +461,12 @@ function handleKeydown(e) {
       // اگر به انتهای متن رسیده باشیم، مکان‌نما را نمایش دهیم
       
   }
+
+  function formatCountdown(seconds: numbger): string {
+      const minutes = Math.floor(seconds / 60)
+      const remainingSeconds = seconds % 60;
+      return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
   
 </script>
 
@@ -477,7 +533,14 @@ function handleKeydown(e) {
     </div>
   {/if}
   
-  {#if isActive && !gameEnded}
+  <!-- Countdown Timer -->
+  {#if !gameStarted && !gameEnded && countdownTimeLeft > 0}
+    <div class="countdown-container">
+      <h3>Game Starting In</h3>
+      <div class="countdown-timer">{formatCountdown(countdownTimeLeft)}</div>
+      <p>Get ready to type!</p>
+    </div>
+  {:else if isActive && !gameEnded}
     <div class="stats">
       <div class="stat">
         <span class="label">Words:</span>
@@ -498,7 +561,7 @@ function handleKeydown(e) {
         </div>
       {/if}
     </div>
-    
+
     <!-- Error state notification -->
     {#if errorState}
       <div class="error-message">
@@ -528,7 +591,6 @@ function handleKeydown(e) {
     </div>
     
     <div bind:this={textContainer} class="text-container" class:error-state={errorState} class:rtl={isPersian} tabindex="0">
-      
     </div>
   {:else if !gameEnded}
     <div class="waiting">
@@ -538,6 +600,37 @@ function handleKeydown(e) {
 </div>
 
 <style>
+
+  .countdown-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 800px;
+    min-height: 300px;
+    background-color: #f0f8ff;
+    border-radius: 8px;
+    padding: 2rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    margin-bottom: 2rem;
+    animation: pulse 2s infinite;
+  }
+
+  .countdown-timer {
+    font-size: 5rem;
+    font-weight: bold;
+    color: #4a56e2;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin: 1rem 0;
+    font-family: monospace;
+  }
+  
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+  }
+
   :global(.error){
     background-color: #ffdddd !important;
     color: #d32f2f !important;
