@@ -1,5 +1,3 @@
-// src/routes/game/+page.svelte
-
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
@@ -13,10 +11,43 @@
   let typingGameComponent: TypingGame;
   let selectedRoom: string = '';
   let isPersianRoom = false; // Flag for Persian room
+  let userNickname: string = '';
+  let username = '';
+  let token = '';
+  let isAuthenticated = false;
   
   onMount(() => {
+    // Check if user has a nickname
+    token = localStorage.getItem('auth_token');
+    if (token) {
+      try {
+        // Basic validation and extract username from token
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          // Decode the payload (middle part of the JWT)
+          const payload = JSON.parse(atob(parts[1]));
+          if (payload && payload.sub) {
+            username = payload.sub;
+            userNickname = username
+            isAuthenticated = true;
+          }
+        }
+      } catch (error) {
+        console.error('Error decoding token:', error);
+      }
+    }else{
+        userNickname = localStorage.getItem('user_nickname') || '';
+        
+        if (!userNickname) {
+          // Redirect to nickname page if no nickname is set
+          goto('/nickname?redirect=/game');
+          return;
+        }
+    }
+    
+    
     // Get the selected room from localStorage
-    selectedRoom = localStorage.getItem('selected_room') || 'test';
+    selectedRoom = localStorage.getItem('selected_room') || 'room1';
     
     // Check if it's the Persian room
     isPersianRoom = selectedRoom === 'room3';
@@ -26,6 +57,12 @@
     
     ws.onopen = () => {
       console.log('Connected to the server');
+          ws.send(JSON.stringify({
+              type: 'usercred',
+              content: {
+                username : userNickname
+              }
+          }))
       // Join the selected room when the page loads
       joinGame(selectedRoom);
     };
@@ -84,7 +121,10 @@
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
         type: 'join',
-        content: { room: roomName }
+        content: { 
+          room: roomName,
+          nickname: userNickname
+        }
       }));
     }
   }
@@ -118,6 +158,10 @@
     // Navigate back to the rooms list
     goto('/rooms');
   }
+  
+  function changeNickname() {
+    goto('/nickname?redirect=/game');
+  }
 </script>
 
 <svelte:head>
@@ -126,6 +170,19 @@
 </svelte:head>
 
 <div class="container {isPersianRoom ? 'persian-container' : ''}">
+  {#if !isAuthenticated}
+    <div class="user-bar">
+      <div class="user-info">
+        <span>Playing as: <strong>{userNickname}</strong></span>
+      </div>
+      <div class="user-controls">
+        <button class="change-nickname" on:click={changeNickname}>
+          Change Nickname
+        </button>
+      </div>
+    </div>
+  {/if}
+
   {#if currentView === 'waiting'}
     <div class="room-header">
       <h2>Room: {selectedRoom} {isPersianRoom ? '(Persian)' : ''}</h2>
@@ -135,6 +192,7 @@
       players={roomData.players} 
       onReady={sendReady}
       isPersian={isPersianRoom}
+      currentUserNickname={userNickname}
     />
   {:else if currentView === 'game'}
     <TypingGame 
@@ -143,49 +201,145 @@
       bind:this={typingGameComponent}
       on:playAgain={handlePlayAgain}
       isPersian={isPersianRoom}
+      currentUserNickname={userNickname}
     />
   {/if}
 </div>
 
 <style>
+  /* Dark Mode Styling to match TypingGame component */
+  :global(body) {
+    font-family: 'IRANSans', 'Vazir', 'Tahoma', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #121212;
+    color: #e0e0e0;
+    text-align: center;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    transition: background-color 0.3s ease;
+  }
+  
   .container {
-    max-width: 1000px;
+    max-width: 1200px;
     margin: 0 auto;
     padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
   }
   
   .persian-container {
-    /* Specific styles for Persian text direction */
     direction: rtl;
     text-align: right;
-    font-family: 'Tahoma', 'Arial', sans-serif;
   }
   
+  /* User bar styling */
+  .user-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background-color: #1e1e1e;
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+    width: 100%;
+    max-width: 800px;
+    border: 1px solid #333;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  }
+  
+  .user-info {
+    font-size: 1.1rem;
+    color: #e0e0e0;
+  }
+  
+  .user-info strong {
+    color: #bb86fc;
+    font-weight: 600;
+  }
+  
+  .change-nickname {
+    padding: 0.6rem 1.2rem;
+    background-color: #2d2d2d;
+    border: 1px solid #bb86fc;
+    color: #bb86fc;
+    border-radius: 8px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  }
+  
+  .change-nickname:hover {
+    background-color: #bb86fc;
+    color: #121212;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  }
+  
+  /* Room header styling */
   .room-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.5rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid #eee;
+    margin-bottom: 2rem;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #333;
+    width: 100%;
+    max-width: 800px;
   }
   
   .room-header h2 {
     margin: 0;
-    font-size: 1.75rem;
+    font-size: 2rem;
+    color: #bb86fc;
+    font-weight: 600;
+    letter-spacing: -0.5px;
   }
   
   .change-room-btn {
-    padding: 0.5rem 1rem;
-    background-color: #f5f5f5;
-    border: none;
-    border-radius: 4px;
+    padding: 0.6rem 1.2rem;
+    background-color: #2d2d2d;
+    border: 1px solid #424242;
+    color: #e0e0e0;
+    border-radius: 8px;
     font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   }
   
   .change-room-btn:hover {
-    background-color: #e0e0e0;
+    background-color: #3d3d3d;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  }
+  
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .container {
+      padding: 1rem;
+    }
+    
+    .room-header {
+      flex-direction: column;
+      gap: 1rem;
+      text-align: center;
+    }
+    
+    .room-header h2 {
+      font-size: 1.5rem;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .user-bar {
+      flex-direction: column;
+      gap: 1rem;
+    }
+    
+    .change-nickname, .change-room-btn {
+      width: 100%;
+    }
   }
 </style>

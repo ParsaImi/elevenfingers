@@ -6,8 +6,41 @@
   let rooms: Record<string, Record<string, any>> = {};
   let loading = true;
   let error = null;
+  let userNickname: string = '';
+  let isAuthenticated: boolean = false;
+  let username = '';
+  let token = '';
   
   onMount(() => {
+   token = localStorage.getItem('auth_token');
+    if (token) {
+      try {
+        // Basic validation and extract username from token
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          // Decode the payload (middle part of the JWT)
+          const payload = JSON.parse(atob(parts[1]));
+          if (payload && payload.sub) {
+            username = payload.sub;
+            userNickname = username
+            isAuthenticated = true;
+          }
+        }
+      } catch (error) {
+        console.error('Error decoding token:', error);
+      }
+    }else{
+        userNickname = localStorage.getItem('user_nickname') || '';
+        
+        if (!userNickname) {
+          // Redirect to nickname page if no nickname is set
+          goto('/nickname?redirect=/game');
+          return;
+        }
+    } 
+    // Check if user has a nickname
+    
+    
     // Connect to WebSocket server
     ws = new WebSocket('ws://localhost:9000/ws');
     
@@ -75,6 +108,10 @@
       goto('/game');
     }
   }
+  
+  function changeNickname() {
+    goto('/nickname?redirect=/rooms');
+  }
 </script>
 
 <svelte:head>
@@ -83,6 +120,16 @@
 </svelte:head>
 
 <div class="container">
+ {#if !isAuthenticated}
+  <div class="user-bar">
+    <div class="user-info">
+      <span>Playing as: <strong>{userNickname}</strong></span>
+    </div>
+    <button class="change-nickname" on:click={changeNickname}>
+      Change Nickname
+    </button>
+  </div>
+ {/if}
   <div class="rooms-container">
     <h2>Available Rooms</h2>
     
@@ -133,6 +180,36 @@
     max-width: 1000px;
     margin: 0 auto;
     padding: 2rem;
+  }
+  
+  .user-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background-color: #f5f5f5;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+  }
+  
+  .user-info {
+    font-size: 1.1rem;
+  }
+  
+  .change-nickname {
+    padding: 0.5rem 1rem;
+    background-color: transparent;
+    border: 1px solid #4a56e2;
+    color: #4a56e2;
+    border-radius: 4px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+  }
+  
+  .change-nickname:hover {
+    background-color: #4a56e2;
+    color: white;
   }
   
   .rooms-container {

@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker 
 
 
-engine = create_engine("postgresql+psycopg2://postgres:123@103.68.108.252:5432/postgres")
+engine = create_engine("postgresql+psycopg2://postgres:123@103.179.44.49:5432/postgres")
 SessionLocal = sessionmaker(autoflush=False, bind=engine)
 
 

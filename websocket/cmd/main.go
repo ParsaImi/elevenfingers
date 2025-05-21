@@ -53,6 +53,8 @@ type GameState struct {
 	leaderBoard     map[string]*Client          `json:"leaderBoard,omitempty"`
 	TotalWords      int              `json:"totalWords"`
 	InGameUsers      map[string]*Client        `json:"inGameUsers"`
+	wordList       []string         `json:"wordList"`
+	language        string          `json:"language"`
 	MatchId         string           `json:"matchId"`
 }
 
@@ -82,6 +84,7 @@ func NewGameServer(apiURL string) *GameServer {
 			CheckOrigin: func(r *http.Request) bool	{
 				return true
 			},
+			Subprotocols: []string{"auth_token", "nickname"},
 		},
 	}
 }
@@ -169,6 +172,7 @@ func (gs *GameServer) Run() {
             if _, ok := gs.clients[client.id]; ok {
                 delete(gs.rooms[client.room], client.id)
                 delete(gs.clients, client.id)
+				delete(gs.games[client.room].InGameUsers , client.id)
                 close(client.sendChan)
             }
             gs.mutex.Unlock()
@@ -205,7 +209,7 @@ func (gs *GameServer) roomStatus(client *Client){
 	guests := make(map[string]bool)
 	for key , value := range gs.rooms[client.room]{
 		fmt.Println(key, "salam in key hasttttttttttttttttttttttttttttttttttttttttttttttttttttt")
-		guests[key] = value.isReady
+		guests[value.username] = value.isReady
 	}
 	roomStatus := struct {
 		Type     string           `json:"type"`
@@ -262,6 +266,8 @@ func (gs *GameServer) joinPlayer(client *Client, message json.RawMessage){
 		fmt.Println("Error while parsing message in join player")
 	}
 	room := result["room"]
+	nickname := result["nickname"]
+	fmt.Println("THIS IS NICKNAME JAKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK#################### ", nickname)
 	fmt.Println(room , "here is the messeage !@")
 	client.room = room
 	gs.mutex.Lock()
@@ -271,7 +277,22 @@ func (gs *GameServer) joinPlayer(client *Client, message json.RawMessage){
     }
     gs.rooms[client.room][client.id] = client
 	gs.mutex.Unlock()
-	gs.roomStatus(client)
+	_ , exist := gs.games[client.room]
+	if exist{
+		fmt.Println("ROOOOOOOOOOOMMMMMMMMMMMMMMMMMMMMMMMMMMMmm    EXISSSSSSSSSSSSSSSSSSSTTTTTTTTTT")
+		if gs.games[client.room].IsActive {
+			fmt.Println("ROOOOOOOOOOOOOOOOOOOOOOOOOOOOM IS ACCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCc!!!!!!!!!!!!!!!")
+			gs.joinRunningGame(client)
+			fmt.Println(gs.rooms[client.room], "IIIIIIIIIIIIIIIIIIIIIIIIIIIISSSSSSSSSSSSSSSS PLAYERSSSSSSSSSSSSSSSSSS(*#&#(&@&#(&#@@(()))))")
+		}else{
+			fmt.Println("ROOOOOOOOOOOOOOOOOOOOOOOOOOOOM IS NNNNNNNNOOOOOOOOOOOOOOTTTTTTTTTTTTT  ACCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCc!!!!!!!!!!!!!!!")
+			gs.roomStatus(client)
+		}
+	}else{
+		fmt.Println("ROOOOOOOOOOOOOOOOOOOOOOOOOOOOM IS DOWSNT EXITS AT ALLL") 
+		gs.roomStatus(client)
+	}
+	
 	fmt.Println("here is the player room" , client.room)
 	fmt.Println("important one ########################################" , gs.rooms[client.room])
 	
@@ -309,10 +330,8 @@ func (gs *GameServer) endGame(client *Client, matchId string){
 			
 			endGameMessage := struct{
 				Type			  string				`json:"type"`
-				LeaderBoard       map[string]*Client    `json:"leaderboard"`
 			}{
 				Type: "endGame",
-				LeaderBoard: gs.games[client.room].leaderBoard,
 
 			}
 		gs.games[client.room].IsActive = false
@@ -331,6 +350,7 @@ func (gs *GameServer) endGame(client *Client, matchId string){
             timeRemaining--
             
             if timeRemaining <= 0 {
+				gs.games[client.room].IsActive = false
                 ticker.Stop()
                 
                 //gs.mutex.Lock()
@@ -374,7 +394,7 @@ func (gs *GameServer) userProgress(client *Client, progress int){
 
 	}{
 		Type: "userProgress",
-		Userid: client.id,
+		Userid: client.username,
 		Percentage: progress,
 	}
 	messageBytes, _ := json.Marshal(progressMessage)
@@ -392,19 +412,25 @@ func (gs *GameServer) wordComplete(client *Client , messageContent json.RawMessa
 		fmt.Println("error while parsing message in wordComplete method")
 	}
 	fmt.Println(result)
+	fmt.Println("WE ARE COLL99999999999999999999999999999999999")
 	userInputWord := result["word"]
+	fmt.Println("are we coll?88888888888888888888888888888888888")
+	fmt.Println(gs.games[client.room].PlayerProgress, "{}{{{{{{{{{PLAYER PROGRESSJk}}}}}}}}}")
 	userWordInGame := &gs.games[client.room].PlayerProgress[client.id].remainedWords
 	if userInputWord != (*userWordInGame)[0]{
+		fmt.Println(userWordInGame)
+		fmt.Println(userInputWord)
 		fmt.Println("CHEATER SPOTTED !!!")
 		return
 	}
 	totalWords := gs.games[client.room].TotalWords
 	*userWordInGame = (*userWordInGame)[1:]
+	fmt.Println("i DID A SUBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBbb ", userWordInGame)
 	completedWords := totalWords - len(*userWordInGame)
 	var userProgressBar int
 	userProgressBar = int(math.Round((float64(completedWords) / float64(totalWords)) * 100))
 	fmt.Println("this the % of player progress", userProgressBar)
-	fmt.Println(*userWordInGame, ")()()()()()()()______________________")
+	fmt.Println(userWordInGame, ")()()()()()()()______________________")
 	gs.userProgress(client , userProgressBar)
 	
 	if len(*userWordInGame) == 0{
@@ -419,12 +445,48 @@ func (gs *GameServer) wordComplete(client *Client , messageContent json.RawMessa
 }
 
 
+func (gs *GameServer) joinRunningGame(client *Client){
+
+		gs.games[client.room].InGameUsers[client.id] = client
+
+		gs.games[client.room].PlayerProgress[client.id] = &PlayerWordRecord{
+			username: client.username,
+			remainedWords: gs.games[client.room].wordList,
+		}
+		
+		startMessage := struct {
+			Type string    `json:"type"`
+			Text string    `json:"text"`
+			Words []string `json:"words"`
+			Time int64 `json:"startTime"`
+			Language string `json:"language"`
+		}{
+			Type: "startGame",
+			Text: gs.games[client.room].Text,
+			Words: gs.games[client.room].wordList,
+			Time: gs.games[client.room].StartTime,
+			Language: gs.games[client.room].language,
+		}	
+
+		messageBytes, _ := json.Marshal(startMessage)
+
+		select{
+			case client.sendChan <- messageBytes:
+				fmt.Println("message goes to user in the gameee")	
+			default:
+				close(client.sendChan)
+				delete(gs.clients, client.id)
+		}
+}
+
+
 func (gs *GameServer) readyToStart(room string){
 	if _, exists := gs.games[room]; !exists {
 		gs.startNewGame(room)
 	}else if !gs.games[room].IsActive {
 		gs.startNewGame(room)
 	}
+
 }
 
 func (gs *GameServer) startNewGame(room string){
@@ -437,6 +499,10 @@ func (gs *GameServer) startNewGame(room string){
 		for id, client := range gs.rooms[room] {
 			inGameUsers[id] = client
 		}
+		language := "en"
+		if room == "room3" {
+			language = "fa"
+		}
 		gameState := &GameState{
 			Text:           displayText,
 			StartTime:      time.Now().UTC().Add(5 * time.Second).UnixMilli(),
@@ -444,6 +510,8 @@ func (gs *GameServer) startNewGame(room string){
 			PlayerProgress: make(map[string]*PlayerWordRecord),
 			leaderBoard:    make(map[string]*Client),
 			TotalWords:     len(wordList),
+			wordList:       wordList,
+			language:       language,
 			InGameUsers:    inGameUsers,
 			MatchId:		uuid.New().String(),
 		}
@@ -457,10 +525,7 @@ func (gs *GameServer) startNewGame(room string){
 		gs.games[room] = gameState
 
 		
-		language := "en"
-		if room == "room3" {
-			language = "fa"
-		}
+		
 
 		startMessage := struct {
 			Type string    `json:"type"`
@@ -498,15 +563,23 @@ func (gs *GameServer) HandleWebSocket(w http.ResponseWriter, r *http.Request){
 		log.Println("Upgrade error:", err)
 		return
 	}
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		token = r.Header.Get("Authorization")
-	}
-	auth, err := verifyTokenWithFastAPI(token)
 	var username string
-	if err == nil && auth.Valid {
-		username = auth.UserName
-		log.Printf("User logged in as %s!", username)
+	protocols := websocket.Subprotocols(r)
+	for _, protocol := range protocols {
+		if strings.HasPrefix(protocol, "auth_token:"){
+			token := strings.TrimPrefix(protocol , "auth_token:")
+			auth, err := verifyTokenWithFastAPI(token)
+			fmt.Println("GONNA SEE SOME ERRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR??")
+			if err != nil{
+				fmt.Println("here is the VALLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLIDDDDDDDDDD")
+				fmt.Println(auth.Valid)
+				username = auth.UserName
+			}
+		}else if strings.HasPrefix(protocol, "nickname:"){
+			if username == ""{
+				username = strings.TrimPrefix(protocol, "nickname:")
+			}
+		}
 	}
 	username = fmt.Sprintf("Guest_%d", time.Now().UnixNano()%10000)
 	log.Printf("User comes as %s ", username)
@@ -580,6 +653,15 @@ func (gs *GameServer) writePump(client *Client){
 }
 
 
+func (gs *GameServer) userCred(client *Client, messageContent json.RawMessage){
+	var result map[string]string
+	err := json.Unmarshal(messageContent, &result)
+	if err != nil{
+		fmt.Println("error while parsing message in wordComplete method")
+	}
+	client.username = result["username"]
+}
+
 func (gs *GameServer) handleGameMessage(client *Client, message []byte){
 	var gameMessage struct {
 		Type string `json:"type"`
@@ -610,7 +692,8 @@ func (gs *GameServer) handleGameMessage(client *Client, message []byte){
 	case "roomStatus":
 		log.Println("going into roomStatus Method ( in handleGameMessage)")
 		gs.roomStatus(client)
-	case "playerRank":
+	case "usercred":
+		gs.userCred(client , gameMessage.Content)
 		
 	//case "endGame":
 	//	log.Println("End Game!!!!")

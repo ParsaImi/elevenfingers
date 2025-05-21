@@ -18,6 +18,10 @@ class User(Base):
 
 Base.metadata.create_all(bind=engine)
 # Pydantic models
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
 class UserCreate(BaseModel):
     email: str
     username: str

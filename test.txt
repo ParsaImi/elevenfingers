@@ -1,3 +1,5 @@
+// src/routes/game/+page.svelte
+
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
@@ -189,6 +191,265 @@
 </style>
 
 
+// src/routes/rooms/+page.svelte
+<script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
+  import { goto } from '$app/navigation';
+  
+  let ws: WebSocket;
+  let rooms: Record<string, Record<string, any>> = {};
+  let loading = true;
+  let error = null;
+  
+  onMount(() => {
+    // Connect to WebSocket server
+    ws = new WebSocket('ws://localhost:9000/ws');
+    
+    ws.onopen = () => {
+      console.log('Connected to the server');
+      // Request the list of rooms
+      requestRooms();
+    };
+    
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      
+      switch(data.type) {
+        case 'roomsStatus':
+          rooms = data.rooms || {};
+          loading = false;
+          break;
+        default:
+          console.log('Received unknown message type:', data.type);
+      }
+    };
+    
+    ws.onerror = (err) => {
+      console.error('WebSocket error:', err);
+      error = 'Failed to connect to the server. Please try again later.';
+      loading = false;
+    };
+    
+    ws.onclose = () => {
+      console.log('Disconnected from the server');
+    };
+  });
+  
+  onDestroy(() => {
+    if (ws) {
+      ws.close();
+    }
+  });
+  
+  function requestRooms() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'roomsStatus'
+      }));
+    }
+  }
+  
+  function refreshRooms() {
+    loading = true;
+    requestRooms();
+  }
+  
+  function joinRoom(roomName: string) {
+    // Store the room name to be used in the game page
+    localStorage.setItem('selected_room', roomName);
+    // Navigate to the game page
+    goto('/game');
+  }
+  
+  function createNewRoom() {
+    // Open a modal or prompt for room name
+    const roomName = prompt('Enter a new room name:');
+    if (roomName && roomName.trim()) {
+      localStorage.setItem('selected_room', roomName.trim());
+      goto('/game');
+    }
+  }
+</script>
+
+<svelte:head>
+  <title>Available Rooms - Tenfinger Typing Game</title>
+  <meta name="description" content="Join a multiplayer typing game room" />
+</svelte:head>
+
+<div class="container">
+  <div class="rooms-container">
+    <h2>Available Rooms</h2>
+    
+    {#if loading}
+      <div class="loading">
+        <p>Loading available rooms...</p>
+      </div>
+    {:else if error}
+      <div class="error">
+        <p>{error}</p>
+        <button on:click={refreshRooms}>Try Again</button>
+      </div>
+    {:else}
+      <div class="room-controls">
+        <button class="refresh-btn" on:click={refreshRooms}>
+          Refresh Rooms
+        </button>
+        <button class="create-btn" on:click={createNewRoom}>
+          Create New Room
+        </button>
+      </div>
+      
+      {#if Object.keys(rooms).length === 0}
+        <div class="no-rooms">
+          <p>No active rooms found. Create a new room to start playing!</p>
+        </div>
+      {:else}
+        <div class="rooms-list">
+          {#each Object.entries(rooms) as [roomName, players]}
+            <div class="room-card">
+              <div class="room-info">
+                <h3>{roomName}</h3>
+                <p>Players: {Object.keys(players).length}</p>
+              </div>
+              <button class="join-btn" on:click={() => joinRoom(roomName)}>
+                Join Room
+              </button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    {/if}
+  </div>
+</div>
+
+<style>
+  .container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+  
+  .rooms-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  h2 {
+    font-size: 2.5rem;
+    margin-bottom: 2rem;
+    text-align: center;
+  }
+  
+  .loading, .error, .no-rooms {
+    width: 100%;
+    max-width: 600px;
+    background-color: #f9f9f9;
+    padding: 2rem;
+    border-radius: 8px;
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+  
+  .error {
+    background-color: #fff8f8;
+    border: 1px solid #ffcdd2;
+  }
+  
+  .loading p, .error p, .no-rooms p {
+    margin-bottom: 1rem;
+  }
+  
+  .room-controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    width: 100%;
+    max-width: 600px;
+    justify-content: space-between;
+  }
+  
+  .refresh-btn, .create-btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  .refresh-btn {
+    background-color: #f5f5f5;
+    color: #333;
+  }
+  
+  .refresh-btn:hover {
+    background-color: #e0e0e0;
+  }
+  
+  .create-btn {
+    background-color: #4a56e2;
+    color: white;
+  }
+  
+  .create-btn:hover {
+    background-color: #3643cf;
+  }
+  
+  .rooms-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: 100%;
+    max-width: 600px;
+  }
+  
+  .room-card {
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    padding: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  
+  .room-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  }
+  
+  .room-info h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.25rem;
+  }
+  
+  .room-info p {
+    margin: 0;
+    color: #666;
+  }
+  
+  .join-btn {
+    padding: 0.5rem 1rem;
+    background-color: #4a56e2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  .join-btn:hover {
+    background-color: #3643cf;
+  }
+  
+  button {
+    cursor: pointer;
+  }
+</style>
+
 // src/routes/+page.svelte - Main landing page
 
 <script lang="ts">
@@ -340,1334 +601,6 @@
   }
 </style>
 
-// src/lib/components/WaitingRoom.svelte - Waiting room component
-
-<script lang="ts">
-  export let players: Record<string, boolean> = {};
-  export let onReady: () => void;
-  
-  $: readyCount = Object.values(players).filter(ready => ready).length;
-  $: totalPlayers = Object.keys(players).length;
-</script>
-
-<div class="waiting-room">
-  <h2>Waiting Room</h2>
-  
-  <div class="player-list">
-    <h3>Players ({readyCount}/{totalPlayers} ready)</h3>
-    {#if totalPlayers === 0}
-      <p>No players in room yet. Waiting for others to join...</p>
-    {:else}
-      <ul>
-        {#each Object.entries(players) as [playerName, isReady]}
-          <li class={isReady ? 'ready' : 'not-ready'}>
-            {playerName} {isReady ? '✓' : ''}
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </div>
-  
-  <div class="ready-section">
-    <p>Once you're ready to play, click the button below:</p>
-    <button on:click={onReady}>I'm Ready</button>
-    <p class="hint">Game will start when all players are ready</p>
-  </div>
-</div>
-
-<style>
-  .waiting-room {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 2rem;
-  }
-  
-  h2 {
-    font-size: 2.5rem;
-    margin-bottom: 2rem;
-    text-align: center;
-  }
-  
-  .player-list {
-    width: 100%;
-    max-width: 500px;
-    margin-bottom: 2rem;
-    padding: 1.5rem;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    background-color: #f9f9f9;
-  }
-  
-  h3 {
-    margin-top: 0;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid #eee;
-  }
-  
-  ul {
-    list-style-type: none;
-    padding: 0;
-    margin: 0;
-  }
-  
-  li {
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid #eee;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  
-  li:last-child {
-    border-bottom: none;
-  }
-  
-  .ready {
-    color: #2ecc71;
-    font-weight: 600;
-  }
-  
-  .not-ready {
-    color: #7f8c8d;
-  }
-  
-  .ready-section {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-
-  button {
-    padding: 12px 28px;
-    font-size: 1rem;
-    font-weight: 600;
-    color: white;
-    background-color: #4a56e2;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    margin: 1rem 0;
-  }
-  
-  button:hover {
-    background-color: #3643cf;
-  }
-  
-  .hint {
-    font-style: italic;
-    color: #666;
-    font-size: 0.9rem;
-    margin-top: 0.5rem;
-  }
-</style>
-
-
-// TypingGame.svelte
-
-<script lang="ts">
-  import { onMount, tick, createEventDispatcher } from 'svelte';
-  import { goto } from '$app/navigation';
-  
-
-  export let gameData: {
-    text: string,
-    StartTime: string,
-    IsActive: string,
-    language?: string // Add language property
-  };
-  export let onWordComplete: (word: string) => void;
-  
-  // Add event dispatcher to communicate with parent
-  const dispatch = createEventDispatcher();
-  let textContainer;
-  let userInput = "";
-  let errorCount = 0;
-  let totalTyped = 0;
-  let cursorPos = 0;
-  let gameText = '';
-  let textArray: string[] = [];
-  let currentPosition = 0;
-  let typedText = '';
-  
-  let isActive = true;
-  let startTime: Date;
-  let currentWordStart = 0;
-  let wordsTyped = 0;
-  let accuracy = 100;
-  let correctChars = 0;
-  let totalChars = 0;
-  let errorState = false; // Flag to track if user is in error state
-  let isPersian = false; // Flag for Persian text
-  
-  // Progress tracking - from server only
-  let playerProgress: Record<string, number> = {};
-  let currentUserId = ''; // This would be set from localStorage or session
-  
-  // Player ranks tracking
-  let playerRanks: Record<string, number> = {};
-  
-  // Game end state
-  let gameEnded = false;
-  let gameResults: any = null;
-  let finalLeaderboard: Record<number, string> = {};
-  
-  $: if (gameData) {
-    gameText = gameData.text;
-    textArray = gameText.split('');
-    isActive = "TRUE";
-    startTime = new Date(gameData.StartTime);
-    currentPosition = 0;
-    typedText = '';
-    currentWordStart = 0;
-    wordsTyped = 0;
-    correctChars = 0;
-    totalChars = 0;
-    errorState = false;
-    gameEnded = false;
-    // Set Persian flag if language is specified
-    isPersian = gameData.language === 'persian';
-    // Reset player ranks
-    playerRanks = {};
-    finalLeaderboard = {};
-  }
-  
-  $: if (totalTyped> 0) {
-    accuracy = Math.round(((totalTyped - errorCount) / totalTyped) * 100);
-  }
-
-  console.log(isPersian)
- 
-  function hasError() {
-      // بررسی کل متن وارد شده تا موقعیت فعلی
-      for (let i = 0; i < userInput.length; i++) {
-          if (userInput[i] !== gameText[i]) {
-              return true;
-          }
-      }
-      return false;
-  } 
-  
- function handleKeydown(e) {
-      if (!isActive || gameEnded) return ;
-      e.preventDefault();
-      
-      if (e.key === "Backspace") {
-          if (cursorPos > 0) {
-              cursorPos--;
-            userInput = userInput.substring(0, cursorPos);
-            if (errorState && currentPosition >= 0) {
-                // Check if we've backspaced to a correct state
-                if (currentPosition === 0 || typedText.substring(0, currentPosition) === gameText.substring(0, currentPosition)) {
-                    errorState = false;
-                }
-            }
-          }
-      } else if (e.key.length === 1) {
-          // اگر خطا وجود دارد اجازه حرکت به جلو را نمی‌دهیم
-          if (errorState){
-              return;
-          }
-          if (hasError()) {
-              // فقط اگر کاراکتر جدید صحیح است و در همان موقعیت قبلی، اجازه تایپ می‌دهیم
-              if (isCorrectChar(e.key, cursorPos - 1)) {
-                  userInput = userInput.substring(0, cursorPos - 1) + e.key + userInput.substring(cursorPos);
-              }
-              // در غیر این صورت، کاربر باید ابتدا از Backspace استفاده کند
-          } else {
-              // اگر خطایی نداریم، اجازه تایپ می‌دهیم
-              if (cursorPos < gameText.length) {
-                  // فقط اگر کاراکتر صحیح است، اجازه تایپ می‌دهیم
-                  if (isCorrectChar(e.key, cursorPos)) {
-                      if (cursorPos === userInput.length) {
-                          userInput += e.key;
-                      } else {
-                          userInput = userInput.substring(0, cursorPos) + e.key + userInput.substring(cursorPos);
-                      }
-
-                      totalTyped++
-                      if (e.key === ' ' || cursorPos + 1 === gameText.length){
-                          if (cursorPos + 1 === gameText.length){
-                              cursorPos++
-                          }
-                          console.log("here is the current pos" + ` ${cursorPos}` + `and here is the gameText.length ${gameText.length}`)
-                          const completedWord = gameText.substring(currentWordStart, cursorPos).trim();
-                            console.log(completedWord)
-                            if (completedWord) {
-                              onWordComplete(completedWord);
-                              currentWordStart = cursorPos;
-                              wordsTyped++;
-                            }
-                      }
-                      cursorPos++;
-                  } else {
-                      errorState = true;
-                      errorCount++;
-                      totalTyped++;
-
-                      if (cursorPos === userInput.length) {
-                          userInput += e.key
-                      } else {
-                          userInput = userInput.substring(0, cursorPos) + e.key + userInput.substring(cursorPos);
-                      }
-                      cursorPos++;
-                        
-                      
-                  }
-                  // در غیر این صورت، کاراکتر را نادیده می‌گیریم
-              }
-          }
-      }
-      
-      tick();
-      updateDisplay()
-  } 
-  
-  function handleClick() {
-      textContainer.focus();
-  }
-  onMount(() => {
-    window.addEventListener('keydown', handleKeydown);
-    
-    // Get username from localStorage if available
-    const username = localStorage.getItem('tenfinger_username');
-    if (username) {
-      currentUserId = username;
-    } else {
-      // Fallback to a random guest ID
-      currentUserId = `Guest_${Math.floor(Math.random() * 10000)}`;
-    }
-    updateDisplay()
-    
-    return () => {
-      window.removeEventListener('keydown', handleKeydown);
-    };
-  });
-  
-  // Handle new websocket message for progress updates
-  export function updateProgress(userId: string, percentage: number) {
-    playerProgress[userId] = percentage;
-    playerProgress = {...playerProgress}; // Trigger reactivity
-  }
-  
-  // New function to handle player rank updates
-  export function updatePlayerRanks(ranks: Record<string, number>) {
-    playerRanks = {...playerRanks, ...ranks}; // Merge in new ranks
-  }
-  
-  // Handle game end signal
-  export function endGame(results = null) {
-    gameEnded = true;
-    gameResults = results;
-    
-    // Process leaderboard data if available
-    if (results && results.leaderboard) {
-      finalLeaderboard = results.leaderboard;
-    }
-    errorCount = 0;
-    totalTyped = 0;
-
-    isActive = false;
-  }
-  
-  function getCharClass(char: string, index: number) {
-    if (index >= typedText.length) {
-      return 'not-typed';
-    }
-    
-    return typedText[index] === char ? 'correct' : 'incorrect';
-  }
-  
-  // Get rank badge color based on position
-  function getRankBadgeColor(rank: number) {
-    switch(rank) {
-      case 1: return 'gold';
-      case 2: return 'silver';
-      case 3: return 'bronze';
-      default: return 'default';
-    }
-  }
-  
-  // Sort players by progress for the leaderboard
-  $: sortedPlayers = Object.entries(playerProgress)
-    .sort(([, progressA], [, progressB]) => progressB - progressA);
-    
-  // Get formatted leaderboard entries from final results
-  $: leaderboardEntries = Object.entries(finalLeaderboard)
-    .map(([rank, username]) => ({
-      rank: parseInt(rank),
-      username: username,
-      isCurrentUser: username === currentUserId
-    }))
-    .sort((a, b) => a.rank - b.rank);
-    
-  // Navigation functions
-  function goToMainMenu() {
-    goto('/');
-  }
-  
-  function playAgain() {
-    // Instead of redirecting, dispatch an event to tell parent component to go back to waiting
-    dispatch('playAgain');
-  }
-  
-  // Get player rank from the results
-  function getCurrentPlayerRank() {
-    // Find the player in the final leaderboard
-    for (const [rank, username] of Object.entries(finalLeaderboard)) {
-      if (username === currentUserId) {
-        return parseInt(rank);
-      }
-    }
-    
-    // Fallback to real-time rank or default
-    return playerRanks[currentUserId] || 
-      (sortedPlayers.findIndex(([playerId]) => playerId === currentUserId) + 1);
-  }
-
-  function splitIntoWords(text){
-      return text.split(" ")
-  }
-
-  function findCurrentWordAndPosition(position) {
-      let words = splitIntoWords(gameText);
-      let charCount = 0;
-      
-      for (let i = 0; i < words.length; i++) {
-          if (position < charCount + words[i].length) {
-              return {
-                  wordIndex: i,
-                  charIndex: position - charCount,
-                  word: words[i]
-              };
-          }
-          
-          // اضافه کردن طول کلمه و یک فاصله
-          charCount += words[i].length;
-          if (i < words.length - 1) {
-              charCount++; // برای فاصله
-          }
-          
-          // اگر درست روی فاصله است
-          if (position === charCount - 1) {
-              return {
-                  wordIndex: i,
-                  charIndex: words[i].length,
-                  word: words[i],
-                  isSpace: true
-              };
-          }
-      }
-      
-      // اگر به انتهای متن رسیده باشیم
-      return {
-          wordIndex: words.length - 1,
-          charIndex: words[words.length - 1].length,
-          word: words[words.length - 1]
-      };
-  }
-
-  function isCorrectChar(key, position) {
-      return gameText[position] === key;
-  }
-
-  function updateDisplay() {
-      console.log(errorState)
-      console.log("updating Display !!!!!")
-      const words = splitIntoWords(gameText);
-      console.log(words)
-      const currentPos = findCurrentWordAndPosition(cursorPos);
-      
-      textContainer.innerHTML = "";
-      
-      let charCountTotal = 0;
-      
-      // پردازش هر کلمه
-      for (let i = 0; i < words.length; i++) {
-          const word = words[i];
-          const wordSpan = document.createElement("span");
-          wordSpan.className = "word";
-          
-          // تعیین وضعیت کلمه فعلی
-          if (i < currentPos.wordIndex) {
-              // کلمه کامل تایپ شده
-              const typedPart = userInput.substring(charCountTotal, charCountTotal + word.length);
-              const isCorrect = typedPart === word;
-              wordSpan.className = `word ${isCorrect ? 'correct' : 'incorrect'}`;
-              wordSpan.textContent = word;
-          } 
-          else if (i === currentPos.wordIndex) {
-              // کلمه فعلی که در حال تایپ است
-              wordSpan.className = "word current";
-              
-              // قسمت تایپ شده کلمه فعلی
-              for (let j = 0; j < word.length; j++) {
-                  console.log(errorState)
-                  const charSpan = document.createElement("span");
-                  
-                  if (j < currentPos.charIndex) {
-                      // کاراکترهای تایپ شده
-                      const typedIndex = charCountTotal + j;
-                      const isCharCorrect = typedIndex < userInput.length && 
-                                            userInput[typedIndex] === word[j];
-                      
-                      charSpan.className = isCharCorrect ? "correct" : "incorrect";
-                      charSpan.textContent = word[j];
-                  } 
-                  else if (j === currentPos.charIndex) {
-                      // کاراکتر فعلی
-                      charSpan.className = "current-char";
-                      charSpan.textContent = word[j];
-                      
-                      // اضافه کردن مکان‌نما
-                      
-                  } 
-
-                  else if (j === currentPos.charIndex && errorState){
-                      console.log("error is enabled")
-                      charSpan.className = "current-char error";
-                      charSpan.textContent = word[j]
-                  }
-                  else {
-                      // کاراکترهای باقیمانده در کلمه فعلی
-                      charSpan.className = "pending";
-                      charSpan.textContent = word[j];
-                  }
-                  
-                  wordSpan.appendChild(charSpan);
-              }
-          } 
-          else {
-              // کلمات آینده
-              wordSpan.className = "word pending";
-              wordSpan.textContent = word;
-          }
-          
-          textContainer.appendChild(wordSpan);
-          
-          // اضافه کردن فاصله بین کلمات
-          if (i < words.length - 1) {
-              const spaceSpan = document.createElement("span");
-              
-              if ( charCountTotal + word.length === cursorPos && errorState) {
-                  spaceSpan.className = "current-char error";
-                  spaceSpan.textContent = " ";
-              }
-              else if (charCountTotal + word.length === cursorPos) {
-                  // مکان‌نما روی فاصله
-                  spaceSpan.className = "current-char";
-                  spaceSpan.textContent = " ";
-                  
-                  
-              } else if (charCountTotal + word.length < cursorPos) {
-                  // فاصله تایپ شده
-                  const spaceIndex = charCountTotal + word.length;
-                  const isSpaceCorrect = spaceIndex < userInput.length && 
-                                        userInput[spaceIndex] === " ";
-                  
-                  spaceSpan.className = isSpaceCorrect ? "correct" : "incorrect";
-                  spaceSpan.textContent = " ";
-              } else {
-                  // فاصله آینده
-                  spaceSpan.className = "pending";
-                  spaceSpan.textContent = " ";
-              }
-              
-              textContainer.appendChild(spaceSpan);
-          }
-          
-          // به‌روزرسانی شمارنده کاراکتر
-          charCountTotal += word.length;
-          if (i < words.length - 1) {
-              charCountTotal++; // برای فاصله
-          }
-      }
-      
-      // اگر به انتهای متن رسیده باشیم، مکان‌نما را نمایش دهیم
-      
-  }
-  
-</script>
-
-<div class="game-container">
-  <h2>Typing Game {isPersian ? '(Persian)' : ''}</h2>
-  
-  {#if gameEnded}
-    <div class="game-end-popup">
-      <div class="popup-content">
-        <h3>Game Ended</h3>
-        
-        <div class="results">
-          <p>Your final score:</p>
-          <ul>
-            <li>Words typed: {wordsTyped}</li>
-            <li>Accuracy: {accuracy}%</li>
-            <li>Final position: {getCurrentPlayerRank()} of {Object.keys(finalLeaderboard).length || sortedPlayers.length}</li>
-          </ul>
-        </div>
-        
-        <!-- Final leaderboard display -->
-        <div class="final-leaderboard">
-          <h4>Final Leaderboard</h4>
-          <table>
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th>Player</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#if leaderboardEntries.length > 0}
-                {#each leaderboardEntries as entry}
-                  <tr class={entry.isCurrentUser ? 'current-user' : ''}>
-                    <td>
-                      <div class="rank-badge rank-{getRankBadgeColor(entry.rank)}">
-                        #{entry.rank}
-                      </div>
-                    </td>
-                    <td>{entry.username} {entry.isCurrentUser ? '(You)' : ''}</td>
-                  </tr>
-                {/each}
-              {:else}
-                {#each sortedPlayers as [playerId, progress], index}
-                  <tr class={playerId === currentUserId ? 'current-user' : ''}>
-                    <td>
-                      <div class="rank-badge rank-{getRankBadgeColor(index + 1)}">
-                        #{index + 1}
-                      </div>
-                    </td>
-                    <td>{playerId} {playerId === currentUserId ? '(You)' : ''}</td>
-                  </tr>
-                {/each}
-              {/if}
-            </tbody>
-          </table>
-        </div>
-        
-        <div class="popup-buttons">
-          <button class="btn-main" on:click={goToMainMenu}>Main Menu</button>
-          <button class="btn-play" on:click={playAgain}>Play Again</button>
-        </div>
-      </div>
-    </div>
-  {/if}
-  
-  {#if isActive && !gameEnded}
-    <div class="stats">
-      <div class="stat">
-        <span class="label">Words:</span>
-        <span class="value">{wordsTyped}</span>
-      </div>
-      <div class="stat">
-        <span class="label">Accuracy:</span>
-        <span class="value">{accuracy}%</span>
-      </div>
-      <div class="stat">
-        <span class="label">Progress:</span>
-        <span class="value">{playerProgress[currentUserId] || 0}%</span>
-      </div>
-      {#if playerRanks[currentUserId]}
-        <div class="stat">
-          <span class="label">Rank:</span>
-          <span class="value">{playerRanks[currentUserId]}</span>
-        </div>
-      {/if}
-    </div>
-    
-    <!-- Error state notification -->
-    {#if errorState}
-      <div class="error-message">
-        Typo detected! Press backspace to correct the error.
-      </div>
-    {/if}
-    
-    <!-- Progress race track - based entirely on server data -->
-    <div class="progress-race">
-      <h3>Race Progress</h3>
-      <div class="progress-container">
-        {#each sortedPlayers as [playerId, progress]}
-          <div class="player-progress">
-            <div class="player-name">{playerId === currentUserId ? `${playerId} (You)` : playerId}</div>
-            <div class="progress-bar-container">
-              <div class="progress-bar" style="width: {progress}%"></div>
-              <div class="progress-value">{progress}%</div>
-            </div>
-            {#if playerRanks[playerId]}
-              <div class="rank-badge rank-{getRankBadgeColor(playerRanks[playerId])}">
-                #{playerRanks[playerId]}
-              </div>
-            {/if}
-          </div>
-        {/each}
-      </div>
-    </div>
-    
-    <div bind:this={textContainer} class="text-container" class:error-state={errorState} class:rtl={isPersian} tabindex="0" on:keydown={handleKeydown} >
-      
-    </div>
-  {:else if !gameEnded}
-    <div class="waiting">
-      <p>Waiting for the game to start...</p>
-    </div>
-  {/if}
-</div>
-
-<style>
-  :global(.error){
-    background-color: #ffdddd !important;
-    color: #d32f2f !important;
-    border-bottom: 2px solid #d32f2f;
-  }
-
-  .error-message {
-    background-color: #ffebee;
-    color: #d32f2f;
-    padding: 0.75rem 1.5rem;
-    border-radius: 4px;
-    margin: 1rem 0;
-    font-weight: bold;
-    border-left: 4px solid #d32f2f;
-    animation: pulse 1.5s infinite;
-    width: 100%;
-    max-width: 800px;
-    text-align: center;
-  }
-
-  .text-container.error-state {
-    background-color: #fff8f8;
-    box-shadow: 0 0 0 2px #ffcdd2, 0 2px 8px rgba(0, 0, 0, 0.1);
-    transition: background-color 0.3s ease;
-  }
-
-  .game-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 2rem;
-    position: relative;
-  }
-  
-  h2 {
-    font-size: 2.5rem;
-    margin-bottom: 2rem;
-    text-align: center;
-  }
-  
-  h3 {
-    font-size: 1.5rem;
-    margin-bottom: 1rem;
-    text-align: center;
-  }
-  
-  h4 {
-    font-size: 1.2rem;
-    margin-bottom: 0.75rem;
-    text-align: center;
-  }
-  
-  .stats {
-    display: flex;
-    justify-content: space-around;
-    width: 100%;
-    max-width: 800px;
-    margin-bottom: 2rem;
-  }
-  
-  .stat {
-    padding: 0.5rem 1rem;
-    background-color: #f5f5f5;
-    border-radius: 4px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-width: 100px;
-  }
-  
-  .label {
-    font-size: 0.8rem;
-    color: #666;
-  }
-  
-  .value {
-    font-size: 1.2rem;
-    font-weight: bold;
-    color: #333;
-  }
-  
-  .error-message {
-    background-color: #ffebee;
-    color: #d32f2f;
-    padding: 0.75rem 1.5rem;
-    border-radius: 4px;
-    margin-bottom: 1rem;
-    font-weight: bold;
-    border-left: 4px solid #d32f2f;
-    animation: pulse 1.5s infinite;
-  }
-  
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
-  }
-  
-  .progress-race {
-    width: 100%;
-    max-width: 800px;
-    margin-bottom: 2rem;
-    padding: 1.5rem;
-    background-color: #f8f9fa;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  }
-  
-  .progress-container {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-  
-  .player-progress {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-  
-  .player-name {
-    flex: 0 0 120px;
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  
-  .progress-bar-container {
-    flex: 1;
-    height: 24px;
-    background-color: #e9ecef;
-    border-radius: 12px;
-    overflow: hidden;
-    position: relative;
-  }
-  
-  .progress-bar {
-    height: 100%;
-    background-color: #4a56e2;
-    border-radius: 12px;
-    transition: width 0.3s ease;
-  }
-  
-  .progress-value {
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #fff;
-    text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
-  }
-  
-  /* Rank badge styles */
-  .rank-badge {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    color: white;
-    font-weight: bold;
-    font-size: 0.8rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-    margin-left: 8px;
-    flex-shrink: 0;
-  }
-  
-  .rank-gold {
-    background: linear-gradient(135deg, #f9d423 0%, #f83600 100%);
-  }
-  
-  .rank-silver {
-    background: linear-gradient(135deg, #e6e6e6 0%, #b3b3b3 100%);
-  }
-  
-  .rank-bronze {
-    background: linear-gradient(135deg, #cd7f32 0%, #a05a2c 100%);
-  }
-  
-  .rank-default {
-    background: #6c757d;
-  }
-  
-  .text-display {
-    width: 100%;
-    max-width: 800px;
-    min-height: 200px;
-    background-color: #f8f9fa;
-    padding: 2rem;
-    border-radius: 8px;
-    font-size: 1.5rem;
-    line-height: 2;
-    text-align: left;
-    font-family: "Vazirmatn", "Tahoma", monospace; /* Add Persian font */
-    white-space: pre-wrap;
-    position: relative;
-    outline: none;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    transition: background-color 0.3s;
-  }
-  
-  /* RTL support for Persian text */
-  .text-display.rtl {
-    direction: rtl;
-    text-align: right;
-  }
-  
-  .text-display.error-state {
-    background-color: #fff8f8;
-    box-shadow: 0 0 0 2px #ffcdd2, 0 2px 8px rgba(0, 0, 0, 0.1);
-  }
-  
-  .char {
-    position: relative;
-    display: inline-block;
-  }
-  
-  .current {
-    position: relative;
-  }
-  
-  .current::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    bottom: 0;
-    height: 2px;
-    width: 100%;
-    background-color: #4a56e2;
-    animation: blink 1s infinite;
-  }
-  
-  .correct {
-    color: #2ecc71;
-  }
-  
-  .incorrect {
-    color: #e74c3c;
-    text-decoration: underline;
-  }
-  
-  .not-typed {
-    color: #333;
-  }
-  
-  .waiting {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    max-width: 800px;
-    min-height: 200px;
-    background-color: #f8f9fa;
-    padding: 2rem;
-    border-radius: 8px;
-    font-size: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  }
-  
-  /* Game End Popup Styles */
-  .game-end-popup {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.7);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-    animation: fadeIn 0.3s ease;
-  }
-  
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  
-  .popup-content {
-    background-color: white;
-    padding: 2rem;
-    border-radius: 8px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
-    width: 90%;
-    max-width: 500px;
-    text-align: center;
-    animation: scaleIn 0.3s ease;
-    max-height: 90vh;
-    overflow-y: auto;
-  }
-  
-  @keyframes scaleIn {
-    from { transform: scale(0.9); }
-    to { transform: scale(1); }
-  }
-  
-  .popup-content h3 {
-    color: #333;
-    font-size: 2rem;
-    margin-bottom: 1.5rem;
-  }
-  
-  .results {
-    margin-bottom: 1.5rem;
-    text-align: left;
-    background-color: #f9f9f9;
-    padding: 1.5rem;
-    border-radius: 8px;
-  }
-  
-  .results p {
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-  }
-  
-  .results ul {
-    list-style-type: none;
-    padding: 0;
-  }
-  
-  .results li {
-    padding: 0.5rem 0;
-    border-bottom: 1px solid #eee;
-  }
-  
-  .results li:last-child {
-    border-bottom: none;
-  }
-  
-  /* Final Leaderboard Styles */
-  .final-leaderboard {
-    margin-bottom: 1.5rem;
-    background-color: #f9f9f9;
-    padding: 1.5rem;
-    border-radius: 8px;
-  }
-  
-  .final-leaderboard table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 0.5rem;
-  }
-  
-  .final-leaderboard th {
-    text-align: left;
-    padding: 0.5rem;
-    border-bottom: 2px solid #ddd;
-    font-weight: 600;
-  }
-  
-  .final-leaderboard td {
-    padding: 0.75rem 0.5rem;
-    border-bottom: 1px solid #eee;
-  }
-  
-  .final-leaderboard tr.current-user {
-    background-color: #e8f4fd;
-    font-weight: 600;
-  }
-  
-  .final-leaderboard tr:last-child td {
-    border-bottom: none;
-  }
-  
-  .popup-buttons {
-    display: flex;
-    justify-content: center;
-    gap: 1rem;
-    margin-top: 1.5rem;
-  }
-  
-  .btn-main, .btn-play {
-    padding: 0.75rem 1.5rem;
-    border: none;
-    border-radius: 4px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-  
-  .btn-main {
-    background-color: #f5f5f5;
-    color: #333;
-  }
-  
-  .btn-main:hover {
-    background-color: #e0e0e0;
-  }
-  
-  .btn-play {
-    background-color: #4a56e2;
-    color: white;
-  }
-  
-  .btn-play:hover {
-    background-color: #3643cf;
-  }
-  
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0; }
-  }
-
-  :global(body) {
-      font-family: 'IRANSans', 'Vazir', 'Tahoma', sans-serif;
-      text-align: center;
-      margin-top: 50px;
-      font-size: 24px;
-  }
-  
-  .text-container {
-      width: 80%;
-      margin: 0 auto;
-      padding: 15px;
-      border: 1px solid #007bff;
-      border-radius: 5px;
-      text-align: right;
-      line-height: 1.5;
-      min-height: 50px;
-      position: relative;
-      cursor: text;
-      word-spacing: 5px;
-  }
-  
-  .text-container:focus {
-      outline: 2px solid #007bff;
-      box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
-  }
-  
-  /* کلاس‌های رنگ متن */
-  :global(.word) {
-      display: inline-block;
-      margin: 0 2px;
-      white-space: nowrap;
-  }
-  
-  :global(.correct) {
-      color: green;
-  }
-  
-  :global(.incorrect) {
-      color: red;
-  }
-  
-  :global(.pending) {
-      color: gray;
-  }
-  
-  :global(.current) {
-      position: relative;
-  }
-  
-  :global(.current-char) {
-      background-color: #ffe066;
-  }
-  
-  /* مکان‌نما */
-  :global(.cursor) {
-      display: inline-block;
-      width: 2px;
-      height: 1.2em;
-      background-color: black;
-      animation: blink 1s infinite;
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-  }
-  
-  @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
-  }
-  
-  /* دکمه شروع مجدد */
-  .reset-btn {
-      margin-top: 20px;
-      padding: 10px 25px;
-      font-size: 16px;
-      background-color: #f8f9fa;
-      border: 1px solid #ced4da;
-      border-radius: 4px;
-      cursor: pointer;
-  }
-  
-  .reset-btn:hover {
-      background-color: #e9ecef;
-  }
-  
-  .error-message {
-      color: red;
-      margin-top: 10px;
-      font-size: 16px;
-  }
-  
-  /* برای حل مشکل فونت */
-  @import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v30.1.0/dist/font-face.css');
-</style>
-
-// src/routes/login/+page.svelte
-<script lang="ts">
-  import { goto } from '$app/navigation';
-  
-  let username = '';
-  let password = '';
-  let error = '';
-  
-  function handleSubmit() {
-    // In a real app, you would handle authentication here
-    // For now, we'll just do a basic validation and redirect
-    if (!username) {
-      error = 'Username is required';
-      return;
-    }
-    
-    // Store username in localStorage or a store
-    localStorage.setItem('tenfinger_username', username);
-    goto('/');
-  }
-</script>
-
-<svelte:head>
-  <title>Login - Tenfinger</title>
-</svelte:head>
-
-<div class="login-container">
-  <div class="login-card">
-    <h1>Login</h1>
-    
-    <form on:submit|preventDefault={handleSubmit}>
-      {#if error}
-        <div class="error">{error}</div>
-      {/if}
-      
-      <div class="form-group">
-        <label for="username">Username</label>
-        <input 
-          type="text" 
-          id="username" 
-          bind:value={username} 
-          placeholder="Enter your username"
-        />
-      </div>
-      
-      <div class="form-group">
-        <label for="password">Password (optional)</label>
-        <input 
-          type="password" 
-          id="password" 
-          bind:value={password} 
-          placeholder="Enter your password"
-        />
-      </div>
-      
-      <button type="submit">Login</button>
-    </form>
-    
-    <p class="note">
-      Don't have an account? You can play as a guest by just entering a username.
-    </p>
-  </div>
-</div>
-
-<style>
-  .login-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 80vh;
-    padding: 2rem;
-  }
-  
-  .login-card {
-    background-color: white;
-    padding: 2rem;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    width: 100%;
-    max-width: 400px;
-  }
-  
-  h1 {
-    margin-top: 0;
-    margin-bottom: 1.5rem;
-    text-align: center;
-    color: #333;
-  }
-  
-  .form-group {
-    margin-bottom: 1.5rem;
-  }
-  
-  label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
-    color: #555;
-  }
-  
-  input {
-    width: 100%;
-    padding: 0.75rem;
-    font-size: 1rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    background-color: #f9f9f9;
-  }
-  
-  input:focus {
-    outline: none;
-    border-color: #4a56e2;
-    box-shadow: 0 0 0 2px rgba(74, 86, 226, 0.2);
-  }
-  
-  button {
-    width: 100%;
-    padding: 0.75rem;
-    background-color: #4a56e2;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 0.2s;
-  }
-  
-  button:hover {
-    background-color: #3643cf;
-  }
-  
-  .error {
-    background-color: #fdedee;
-    color: #e74c3c;
-    padding: 0.75rem;
-    border-radius: 4px;
-    margin-bottom: 1rem;
-    font-size: 0.9rem;
-  }
-  
-  .note {
-    margin-top: 1.5rem;
-    text-align: center;
-    font-size: 0.9rem;
-    color: #666;
-  }
-</style>
-
 
 // src/app.css - Global styles
 
@@ -1709,130 +642,6 @@ h1, h2, h3, h4, h5, h6 {
 
 button {
   cursor: pointer;
-}
-
-//src/lib/websocket.ts
-
-import { writable } from 'svelte/store';
-
-// Store for WebSocket connection status
-export const wsStatus = writable('disconnected');
-
-// Store for player data
-export const players = writable({});
-
-// Store for game data
-export const gameData = writable(null);
-
-let ws: WebSocket | null = null;
-let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-
-export function connectWebSocket(url: string) {
-  // Clear any existing reconnect timeout
-  if (reconnectTimeout) {
-    clearTimeout(reconnectTimeout);
-    reconnectTimeout = null;
-  }
-  
-  // Close existing connection
-  if (ws) {
-    ws.close();
-  }
-  
-  wsStatus.set('connecting');
-  
-  ws = new WebSocket(url);
-  
-  ws.onopen = () => {
-    wsStatus.set('connected');
-    console.log('WebSocket connected');
-  };
-  
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      
-      switch (data.type) {
-        case 'roomStatus':
-          players.set(data.players || {});
-          break;
-        case 'startGame':
-          gameData.set(data);
-          break;
-        default:
-          console.log('Received unknown message type:', data.type);
-      }
-    } catch (error) {
-      console.error('Error parsing WebSocket message:', error);
-    }
-  };
-  
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
-    wsStatus.set('error');
-  };
-  
-  ws.onclose = () => {
-    wsStatus.set('disconnected');
-    console.log('WebSocket disconnected');
-    
-    // Set a reconnect timeout
-    reconnectTimeout = setTimeout(() => {
-      connectWebSocket(url);
-    }, 5000);
-  };
-  
-  return {
-    send: (data: any) => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(data));
-      } else {
-        console.error('WebSocket not connected');
-      }
-    },
-    close: () => {
-      if (ws) {
-        ws.close();
-      }
-    }
-  };
-}
-
-// src/types.ts - TypeScript types
-export interface Player {
-  name: string;
-  isReady: boolean;
-}
-
-export interface GameData {
-  text: string;
-  StartTime: string;
-  IsActive: string;
-}
-
-export interface WordCompletePayload {
-  type: 'wordComplete';
-  content: {
-    word: string;
-  };
-}
-
-export interface JoinPayload {
-  type: 'join';
-  content: {
-    room: string;
-  };
-}
-
-export interface ReadyPayload {
-  type: 'ready';
-}
-
-// src/hooks.server.ts - SvelteKit server hooks
-// This file might be used for server-side authentication, but we'll keep it minimal
-export async function handle({ event, resolve }) {
-  // You can add server-side authentication here if needed
-  return await resolve(event);
 }
 
 

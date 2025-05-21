@@ -1,13 +1,56 @@
+# main.py
+from fastapi import FastAPI
+import os
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Add the parent directory to the Python path
+sys.path.insert(0, current_dir)
+from myroutes import auth
+from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+load_dotenv()
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, project_root)
+
+origins = [
+    "http://localhost",
+    "http://localhost:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+class Settings:
+    SECRET_KEY: str = os.getenv('SECRET_KEY' , "fallback_secret_key")
+
+settings = Settings()
+
+
+app.include_router(auth.router)
+
+@app.get("/")
+async def root():
+    return {"message": "Hellow nig"}
+
+
+
+# myroutes/auth.py
 import os
 from fastapi import security
 import jwt
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jwt.exceptions import ExpiredSignatureError  # Add this import
 from datetime import timedelta, datetime
 from fastapi import APIRouter, HTTPException, status
 from starlette.status import HTTP_201_CREATED
 from database.database import get_db
-from models.schemas import UserCreate, User, UserResponse , UserLogin
+from models.schemas import UserCreate, User, UserResponse
 from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -66,7 +109,7 @@ def signup(user: UserCreate):
 def verify(credentials : HTTPAuthorizationCredentials):
     try:
         token = credentials.credentials
-        payload = jwt.decode(token, "hereisthekey", algorithms=ALGORITHM)
+        payload = PyJWT.decode(token, os.getenv("SECRET_KEY"), algorithms=ALGORITHM)
         return {"verify" : True , "username": payload.get("sub")}
     except ExpiredSignatureError:
         raise HTTPException(
@@ -82,8 +125,7 @@ def verify(credentials : HTTPAuthorizationCredentials):
         )
 
 @router.post("/login", response_model=Token)
-def login(form_data : UserLogin):
-    print(form_data.username + " ", form_data.password)
+def login(form_data : OAuth2PasswordRequestForm = Depends()):
     user = get_user_by_email(form_data.username)
     if not user :
         user = get_user_by_username(form_data.username)
@@ -109,7 +151,7 @@ def create_access_token(data: dict , expires_delta):
         expire = datetime.now() + timedelta(minutes=15)
 
     to_encode.update({"exp" : expire})
-    encoded_jwt = jwt.encode(to_encode, "hereisthekey", algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, os.getenv("SECRET_KEY"), algorithm=ALGORITHM)
     return encoded_jwt
 
 def get_hashed_password(password: str):
@@ -125,3 +167,23 @@ def get_user_by_username(username: str):
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
+
+
+
+# database/database.py
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker 
+
+
+engine = create_engine("postgresql+psycopg2://postgres:123@103.179.44.49:5432/postgres")
+SessionLocal = sessionmaker(autoflush=False, bind=engine)
+
+
+def get_db():
+    db_session = SessionLocal()
+    return db_session
+
+def get_engine():
+    return engine
+
