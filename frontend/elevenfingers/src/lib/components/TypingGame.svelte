@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick, createEventDispatcher } from 'svelte';
+  import { onMount, onDestroy, tick, createEventDispatcher } from 'svelte';
   import { goto } from '$app/navigation';
   
 
@@ -78,6 +78,8 @@
   }
 
   function startCountdown() {
+      // Guard clause to prevent countdown if component is destroyed
+      
       console.log("countdown started!!", startTime)
       console.log(gameData.startTime)
       if (countdownInterval) {
@@ -95,10 +97,13 @@
       countdownTimeLeft = Math.ceil(timeDiff / 1000)
 
       countdownInterval = setInterval(() => {
+          
+          
           countdownTimeLeft--;
 
           if (countdownTimeLeft <= 0) {
               clearInterval(countdownInterval)
+              gameEnded = false
               startGame()
           }
           console.log("time goes!!")
@@ -106,6 +111,11 @@
     }
     
   function startGame() {
+      // Guard clause to prevent starting game if component is destroyed
+      if (!textContainer || gameEnded) {
+          return;
+      }
+      
       gameStarted = true;
       isActive = true
 
@@ -129,8 +139,12 @@
   } 
   
  function handleKeydown(e) {
+    // Guard clause to prevent execution if component is destroyed or game is not active
+    if (!textContainer || !gameText || !isActive || gameEnded) {
+        return;
+    }
+    
     console.log(e.key)
-    if (!isActive || gameEnded) return;
     e.preventDefault();
     
     if (e.key === "Backspace") {
@@ -183,10 +197,16 @@
     
     updateDisplay();
 } 
+
+  // Cleanup function to remove event listeners and reset variables
+  function cleanup() {
+    window.removeEventListener('keydown', handleKeydown);
+  }
   
   function handleClick() {
       textContainer.focus();
   }
+  
   onMount(() => {
     window.addEventListener('keydown', handleKeydown);
     
@@ -212,7 +232,7 @@
         username = localStorage.getItem('user_nickname') || '';
         
         currentUserId = username
-        if (!userNickname) {
+        if (!username) {
           // Redirect to nickname page if no nickname is set
           goto('/nickname?redirect=/game');
           return;
@@ -223,12 +243,14 @@
     if (gameData && gameData.startTime) {
       startCountdown();
     }
-    return () => {
-      window.removeEventListener('keydown', handleKeydown);
-      if (countdownInterval) {
-        clearInterval(countdownInterval);
-      }
-    };
+    
+    // Return cleanup function
+    return cleanup;
+  });
+  
+  // Use onDestroy to ensure cleanup always happens
+  onDestroy(() => {
+    cleanup();
   });
   
   // Handle new websocket message for progress updates
@@ -365,6 +387,11 @@
   }
 
   function updateDisplay() {
+      // Guard clause to prevent errors if component is destroyed
+      if (!textContainer || !gameText) {
+          return;
+      }
+      
       console.log(cursorPos)
       console.log("updating Display !!!!!")
       const words = splitIntoWords(gameText);
@@ -824,7 +851,7 @@
     padding: 2rem;
     border: 1px solid #333;
     border-radius: 12px;
-    text-align: right;
+    text-align: left;
     line-height: 1.8;
     min-height: 200px;
     position: relative;

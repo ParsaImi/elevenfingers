@@ -169,6 +169,7 @@ func (gs *GameServer) Run() {
 			// Unlock here
         case client := <-gs.unregister:
             gs.mutex.Lock()
+			fmt.Println("On Unregistereeeeeeeeeeeeeeeeeeeeeeeeeeeeee&&*&*77777778")
             if _, ok := gs.clients[client.id]; ok {
                 delete(gs.rooms[client.room], client.id)
                 delete(gs.clients, client.id)
