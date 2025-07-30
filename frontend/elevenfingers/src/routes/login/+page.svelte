@@ -35,9 +35,13 @@
       const response = await fetch('http://localhost:8000/auth/login', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/x-www-form-urlencoded'
         },
-        body: JSON.stringify({ username, password })
+        body: new URLSearchParams({
+            grant_type: 'password',
+            username: username,
+            password: password
+        }) 
       });
       
       const data = await response.json();
