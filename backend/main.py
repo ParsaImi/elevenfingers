@@ -18,6 +18,7 @@ load_dotenv()
 origins = [
     "http://localhost",
     "http://localhost:5173",
+    "http://160.191.77.176:5173",
 ]
 
 app.add_middleware(

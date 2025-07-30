@@ -1,9 +1,6 @@
 package main
 
 import (
-	//"github.com/parsaimi/elevenfinger_websocket/internal/app"
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
