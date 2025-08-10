@@ -1,7 +1,9 @@
+from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Depends, status
 from pydantic import BaseModel
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.sql import func
+from sqlalchemy import DateTime, create_engine, Column, Integer, String
 from sqlalchemy.orm import sessionmaker , Session
 from database.database import get_engine
 engine = get_engine()
@@ -14,6 +16,7 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
+    created_on = Column(DateTime, default= datetime.now(timezone.utc), nullable=False)
 
 
 Base.metadata.create_all(bind=engine)
@@ -31,6 +34,7 @@ class UserResponse(BaseModel):
     id: int
     email: str
     username: str
+    created_on: datetime
     
 #  Helper Function
 
