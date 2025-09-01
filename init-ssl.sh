@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Replace with your actual domain and email
-domain="parsaimi.xyz"
+domain="fantacytype.top"
 email="parsaemani17@gmail.com"
 
 # Create required directories
