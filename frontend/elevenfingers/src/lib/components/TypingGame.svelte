@@ -12,7 +12,16 @@
   export let onWordComplete: (word: string) => void;
   
   // Add event dispatcher to communicate with parent
+  
+  type PlayerResult = { 
+      type: string;
+      playerid; number;
+      rank: number;
+      wpm: number;
+      durationminutes: number;
+  }
   const dispatch = createEventDispatcher();
+  let playerserverid: string;
   let textContainer;
   let userInput = "";
   let errorCount = 0;
@@ -38,7 +47,7 @@
   let currentUserId = ''; // This would be set from localStorage or session
   
   // Player ranks tracking
-  let playerRanks: Record<string, number> = {};
+  let playerRanks: Record<string, PlayerResult> = {};
   
   let countdownTimeLeft = 0;
   let countdownInterval: number;
@@ -86,10 +95,14 @@
           clearInterval(countdownInterval)
       }
       const now = new Date();
+      console.log("NOWWWWW")
+      console.log(now)
       const timeDiff = startTime.getTime() - now.getTime();
 
       if (timeDiff <= 0) {
+          console.log(`BA KAMAL MEYL  ${timeDiff}`)
           countdownTimeLeft = 0;
+          gameEnded = false
           startGame();
           return;
       }
@@ -110,11 +123,8 @@
         }, 1000)
     }
     
-  function startGame() {
-      // Guard clause to prevent starting game if component is destroyed
-      if (!textContainer || gameEnded) {
-          return;
-      }
+  function startGame() { // Guard clause to prevent starting game if component is destroyed
+      
       
       gameStarted = true;
       isActive = true
@@ -241,7 +251,10 @@
     updateDisplay()
     
     if (gameData && gameData.startTime) {
-      startCountdown();
+        console.log("startCountdown goes")
+        startCountdown();
+    } else {
+        console.log("NOT THE COUNTER TIMEj")
     }
     
     // Return cleanup function
@@ -261,8 +274,12 @@
   }
   
   // New function to handle player rank updates
-  export function updatePlayerRanks(ranks: Record<string, number>) {
-    playerRanks = {...playerRanks, ...ranks}; // Merge in new ranks
+  export function updatePlayerRanks(data: PlayerResult) {
+    playerRanks[data.playerid] = data
+    playerserverid = data.playerid
+    console.log("HERE SHITTTTTTTTTT")
+    console.log(currentUserId)
+    console.log(data)
   }
   
   // Handle game end signal
@@ -276,6 +293,7 @@
     gameResults = results;
     
     // Process leaderboard data if available
+    console.log(`this is the final result ${results} and ${results.leaderboard}`)
     if (results && results.leaderboard) {
       finalLeaderboard = results.leaderboard;
     }
@@ -312,9 +330,13 @@
     .map(([rank, username]) => ({
       rank: parseInt(rank),
       username: username,
-      isCurrentUser: username === currentUserId
+      isCurrentUser: username === currentUserId,
+      wpm: playerRanks[playerserverid]?.wpm || 0,
+      duration: playerRanks[playerserverid]?.durationminutes || 0,
     }))
     .sort((a, b) => a.rank - b.rank);
+
+  
     
   // Navigation functions
   function goToMainMenu() {
@@ -387,12 +409,8 @@
   }
 
   function updateDisplay() {
-      // Guard clause to prevent errors if component is destroyed
-      if (!textContainer || !gameText) {
-          return;
-      }
-      
       console.log(cursorPos)
+      console.log(playerRanks)
       console.log("updating Display !!!!!")
       const words = splitIntoWords(gameText);
       console.log(words)
@@ -522,38 +540,44 @@
         <div class="final-leaderboard">
           <h4>Final Leaderboard</h4>
           <table>
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th>Player</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#if leaderboardEntries.length > 0}
-                {#each leaderboardEntries as entry}
-                  <tr class={entry.isCurrentUser ? 'current-user' : ''}>
-                    <td>
-                      <div class="rank-badge rank-{getRankBadgeColor(entry.rank)}">
-                        #{entry.rank}
-                      </div>
-                    </td>
-                    <td>{entry.username} {entry.isCurrentUser ? '(You)' : ''}</td>
-                  </tr>
-                {/each}
-              {:else}
-                {#each sortedPlayers as [playerId, progress], index}
-                  <tr class={playerId === currentUserId ? 'current-user' : ''}>
-                    <td>
-                      <div class="rank-badge rank-{getRankBadgeColor(index + 1)}">
-                        #{index + 1}
-                      </div>
-                    </td>
-                    <td>{playerId} {playerId === currentUserId ? '(You)' : ''}</td>
-                  </tr>
-                {/each}
-              {/if}
-            </tbody>
-          </table>
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Player</th>
+                  <th>WPM</th>
+                  <th>Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#if leaderboardEntries.length > 0}
+                  {#each leaderboardEntries as entry}
+                    <tr class={entry.isCurrentUser ? 'current-user' : ''}>
+                      <td>
+                        <div class="rank-badge rank-{getRankBadgeColor(entry.rank)}">
+                          #{entry.rank}
+                        </div>
+                      </td>
+                      <td>{entry.username} {entry.isCurrentUser ? '(You)' : ''}</td>
+                      <td class="wpm-cell">{entry.wpm.toFixed(1)}</td>
+                      <td class="duration-cell">{entry.duration.toFixed(1)}m</td>
+                    </tr>
+                  {/each}
+                {:else}
+                  {#each sortedPlayers as [playerId, progress], index}
+                    <tr class={playerId === currentUserId ? 'current-user' : ''}>
+                      <td>
+                        <div class="rank-badge rank-{getRankBadgeColor(index + 1)}">
+                          #{index + 1}
+                        </div>
+                      </td>
+                      <td>{playerId} {playerId === currentUserId ? '(You)' : ''}</td>
+                      <td class="wpm-cell">-</td>
+                      <td class="duration-cell">-</td>
+                    </tr>
+                  {/each}
+                {/if}
+              </tbody>
+          </table> 
         </div>
         
         <div class="popup-buttons">
@@ -606,7 +630,7 @@
       <div class="progress-container">
         {#each sortedPlayers as [playerId, progress]}
           <div class="player-progress">
-            <div class="player-name">{playerId === currentUserId ? `${currentUserId} (You)` : playerId}</div>
+            <div class="player-name">{playerId === currentUserId ? `${currentUserId}  (You)` : playerId}</div>
             <div class="progress-bar-container">
               <div class="progress-bar" style="width: {progress}%"></div>
               <div class="progress-value">{progress}%</div>
@@ -1106,6 +1130,18 @@
   
   .final-leaderboard tr:last-child td {
     border-bottom: none;
+  }
+
+  .final-leaderboard th:nth-child(3),
+  .final-leaderboard th:nth-child(4) {
+      text-align: center;
+      width: 80px;
+  }
+
+  .wpm-cell, .duration-cell {
+    text-align: center;
+    font-weight: 600;
+    color: #03dac6;
   }
   
   .popup-buttons {

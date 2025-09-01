@@ -53,16 +53,27 @@
     isPersianRoom = selectedRoom === 'room3';
     
     // Connect to WebSocket server
-    ws = new WebSocket('ws://localhost:9000/ws'); // Replace with your actual WebSocket URL
+    ws = new WebSocket('ws://ws.fantacytype.top:9000/ws'); // Replace with your actual WebSocket URL
     
     ws.onopen = () => {
       console.log('Connected to the server');
+        if (token) {
+
+          ws.send(JSON.stringify({
+              type: 'usercred',
+              content: {
+                token : token
+              }
+          }))
+
+        } else {
           ws.send(JSON.stringify({
               type: 'usercred',
               content: {
                 username : userNickname
               }
           }))
+        }
       // Join the selected room when the page loads
       joinGame(selectedRoom);
     };
@@ -87,9 +98,9 @@
           break;
         case 'playerRank':
           // Handle player rank updates
-          if (typingGameComponent && data.playerrank) {
-            typingGameComponent.updatePlayerRanks(data.playerrank);
-          }
+            typingGameComponent.updatePlayerRanks(data);
+            console.log("HERE IS DDDDDDDDDDDDDAAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTAAAAAAAAAAAAAAA :::::::::::::::::::")
+            console.log(data)
           break;
         case 'endGame':
           // Handle game end signal

@@ -5,9 +5,8 @@ if ! [ -x "$(command -v docker compose)" ]; then
   exit 1
 fi
 
-domains=(parsaimi.xyz www.parsaimi.xyz)
-newdomains=(game.parsaimi.xyz)
-serverdomains=(cloud.parsaimi.xyz)
+domains=(fantacytype.top)
+serverdomains=(ws.fantacytype.top)
 rsa_key_size=4096
 data_path="./data/certbot"
 email="parsaemani17@gmail.com" # Adding a valid address is strongly recommended
@@ -39,16 +38,6 @@ docker compose run --rm --entrypoint "\
     -subj '/CN=localhost'" certbot
 echo
 
-echo "### Creating dummy certificate for $newdomains ..."
-path="/etc/letsencrypt/live/$newdomains"
-mkdir -p "$data_path/conf/live/$newdomains"
-docker compose run --rm --entrypoint "\
-  openssl req -x509 -nodes -newkey rsa:$rsa_key_size -days  1\
-    -keyout '$path/privkey.pem' \
-    -out '$path/fullchain.pem' \
-    -subj '/CN=localhost'" certbot
-echo
-
 echo "### Creating dummy certificate for $serverdomains..."
 path="/etc/letsencrypt/live/$serverdomains"
 mkdir -p "$data_path/conf/live/$serverdomains"
@@ -70,13 +59,6 @@ docker compose run --rm --entrypoint "\
   rm -Rf /etc/letsencrypt/renewal/$domains.conf" certbot
 echo
 
-echo "### Deleting dummy certificate for $newdomains ..."
-docker compose run --rm --entrypoint "\
-  rm -Rf /etc/letsencrypt/live/$newdomains && \
-  rm -Rf /etc/letsencrypt/archive/$newdomains && \
-  rm -Rf /etc/letsencrypt/renewal/$newdomains.conf" certbot
-echo
-
 
 echo "### Deleting dummy certificate for $serverdomains ..."
 docker compose run --rm --entrypoint "\
@@ -95,12 +77,6 @@ for domain in "${domains[@]}"; do
 done
 
 
-echo "### Requesting Let's Encrypt certificate for $newdomains ..."
-#Join $newdomains to -d args
-newdomain_args=""
-for domain in "${newdomains[@]}"; do
-  newdomain_args="$newdomain_args -d $domain"
-done
 
 echo "### Requesting Let's Encrypt certificate for $serverdomains ..."
 #Join $serverdomains to -d args
@@ -138,15 +114,7 @@ docker compose run --rm --entrypoint "\
     --force-renewal" certbot
 echo
 
-docker compose run --rm --entrypoint "\
-  certbot certonly --webroot -w /var/www/certbot \
-    $staging_arg \
-    $email_arg \
-    $newdomain_args \
-    --rsa-key-size $rsa_key_size \
-    --agree-tos \
-    --force-renewal" certbot
-echo
+
 
 
 
